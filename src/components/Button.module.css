@@ -53,6 +53,18 @@
   background: var(--color-hover);
 }
 
+/* Deletes or stops: the danger color on a border, a tint only on hover. Never filled:
+   the filled button is a question's main answer. */
+.danger {
+  background: transparent;
+  border-color: var(--color-border-strong);
+  color: var(--color-danger-text);
+}
+
+.danger:hover:not(:disabled) {
+  background: var(--color-danger-bg);
+}
+
 /* The actions of a row in a list. */
 .small {
   min-height: 2rem;

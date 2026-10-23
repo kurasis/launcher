@@ -1,11 +1,24 @@
-.section p {
+/* "Cause. The game needs…": the heading runs into its text. */
+.runIn h5,
+.runIn p {
+  display: inline;
   margin: 0;
 }
 
-.heading {
-  font-size: var(--font-size-md);
+.runIn h5 {
+  font-size: inherit;
   font-weight: 600;
-  margin: 0 0 var(--space-1);
+}
+
+.runIn h5::after {
+  content: '.';
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
 }
 
 .muted {

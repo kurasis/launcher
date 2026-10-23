@@ -5,7 +5,7 @@ import forms from '../../components/forms.module.css';
 import type { WorldsDevice } from '../../lib/contracts';
 import { ipc } from '../../lib/ipc';
 import { numberLocale, strings } from '../../lib/strings';
-import { Dialog } from '../mods/Dialog';
+import { Dialog } from '../../components/Dialog';
 import { worldsErrorText } from './useWorlds';
 import styles from './Worlds.module.css';
 

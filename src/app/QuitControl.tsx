@@ -1,5 +1,7 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { Button } from '../components/Button';
+import { Dialog } from '../components/Dialog';
+import dialog from '../components/Dialog.module.css';
 import { Icon } from '../components/Icon';
 import { Notice } from '../components/Notice';
 import type { OperationKind, QuitAction } from '../lib/contracts';
@@ -22,11 +24,8 @@ export function QuitControl({ activeKind = null, compact = false }: QuitControlP
   const [hosting, setHosting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const keepRef = useRef<HTMLButtonElement>(null);
+  const bodyId = useId();
   const job = activeKind === 'install' || activeKind === 'repair';
-
-  useEffect(() => {
-    if (choosing) keepRef.current?.focus();
-  }, [choosing]);
 
   useEffect(
     () =>
@@ -85,47 +84,48 @@ export function QuitControl({ activeKind = null, compact = false }: QuitControlP
         </p>
       )}
       {choosing && (
-        <div className={styles.backdrop}>
-          <div
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="quit-title"
-            aria-describedby="quit-body"
-            className={styles.dialog}
-            onKeyDown={(event) => {
-              if (event.key === 'Escape') setChoosing(false);
-            }}
-          >
-            <h2 id="quit-title">{title}</h2>
-            <p id="quit-body">{body}</p>
-            {error !== null && <Notice tone="danger">{error}</Notice>}
-            <div className={styles.actions}>
-              <Button
-                ref={keepRef}
-                variant="primary"
-                onClick={() => {
-                  void send('keep_in_background');
-                }}
-              >
-                {t.keep}
-              </Button>
-              <Button
-                onClick={() => {
-                  void send('stop_and_quit');
-                }}
-              >
-                {stop}
-              </Button>
-              <Button
-                onClick={() => {
-                  setChoosing(false);
-                }}
-              >
-                {t.cancel}
-              </Button>
-            </div>
+        // On the page body, above the rail's popups: the system's close button asks too.
+        <Dialog
+          title={title}
+          describedBy={bodyId}
+          initialFocus={keepRef}
+          onClose={() => {
+            setChoosing(false);
+          }}
+        >
+          <p id={bodyId}>{body}</p>
+          {error !== null && <Notice tone="danger">{error}</Notice>}
+          <div className={dialog.actions}>
+            <Button
+              ref={keepRef}
+              variant="primary"
+              size="small"
+              onClick={() => {
+                void send('keep_in_background');
+              }}
+            >
+              {t.keep}
+            </Button>
+            <Button
+              variant="danger"
+              size="small"
+              onClick={() => {
+                void send('stop_and_quit');
+              }}
+            >
+              {stop}
+            </Button>
+            <Button
+              variant="ghost"
+              size="small"
+              onClick={() => {
+                setChoosing(false);
+              }}
+            >
+              {t.cancel}
+            </Button>
           </div>
-        </div>
+        </Dialog>
       )}
     </>
   );

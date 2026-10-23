@@ -2,7 +2,7 @@ import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import { Icon } from '../../components/Icon';
 import type { ModsProject } from '../../lib/contracts';
 import { strings } from '../../lib/strings';
-import { Dialog } from './Dialog';
+import { Dialog } from '../../components/Dialog';
 import { ourPicture } from './helpers';
 import { RichText } from './RichText';
 import catalog from './Catalog.module.css';

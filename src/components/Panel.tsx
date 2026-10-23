@@ -7,16 +7,18 @@ interface PanelProps {
   level?: 2 | 3 | 4;
   /** Optional element rendered next to the heading, e.g. a status badge. */
   aside?: ReactNode;
+  /** The aside follows the heading instead of sitting at the far end. */
+  asideAtTitle?: boolean;
   children: ReactNode;
 }
 
 /** A titled content section exposed to assistive technology as a labelled region. */
-export function Panel({ title, level = 2, aside, children }: PanelProps) {
+export function Panel({ title, level = 2, aside, asideAtTitle = false, children }: PanelProps) {
   const headingId = useId();
   const Heading = `h${String(level)}` as 'h2' | 'h3' | 'h4';
   return (
     <section className={styles.panel} aria-labelledby={headingId}>
-      <header className={styles.header}>
+      <header className={[styles.header, asideAtTitle && styles.atTitle].filter(Boolean).join(' ')}>
         <Heading id={headingId} className={styles.title}>
           {title}
         </Heading>

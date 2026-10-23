@@ -6,7 +6,7 @@ import type { DocNode, InstanceSummary, ModsProject, ModsVersion } from '../../l
 import { formatBytes } from '../../lib/format';
 import { describeIpcError, ipc } from '../../lib/ipc';
 import { numberLocale, strings } from '../../lib/strings';
-import { Dialog } from './Dialog';
+import { Dialog } from '../../components/Dialog';
 import { cannotAdd, installable, installKind, isolate, packArchive, validGame } from './helpers';
 import { dayOf, fits, pageOf, shortDayOf } from './versions';
 import { RichText } from './RichText';

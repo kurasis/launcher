@@ -1219,6 +1219,8 @@ export type Messages = {
     readonly working: string;
     readonly deleted: (values: { name: string | number }) => string;
     readonly deletedWithBackup: (values: { name: string | number }) => string;
+    readonly checking: string;
+    readonly retry: string;
   };
   readonly settings: {
     readonly title: string;
@@ -2732,6 +2734,13 @@ export type Messages = {
     }) => string;
     readonly allow: string;
     readonly decline: string;
+    readonly approvalFor: (values: { files: number; name: string | number }) => string;
+    readonly monthUsed: (values: { used: string | number }) => string;
+    readonly monthUsedOfLimit: (values: {
+      used: string | number;
+      limit: string | number;
+    }) => string;
+    readonly showQuestion: string;
   };
   readonly network: {
     readonly offline: string;
@@ -2805,6 +2814,7 @@ export type Messages = {
       readonly install: string;
     };
     readonly rolledBack: (values: { failed: string | number; version: string | number }) => string;
+    readonly notesLead: string;
   };
   readonly downloads: {
     readonly title: string;

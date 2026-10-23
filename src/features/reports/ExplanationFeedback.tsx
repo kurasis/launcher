@@ -40,6 +40,7 @@ export function ExplanationFeedback({ diagnosis }: { diagnosis: CrashDiagnosis }
     <div className={styles.feedback}>
       <span className={styles.muted}>{t.helped}</span>
       <Button
+        size="small"
         disabled={state === 'sending'}
         onClick={() => {
           answer(true);
@@ -48,6 +49,7 @@ export function ExplanationFeedback({ diagnosis }: { diagnosis: CrashDiagnosis }
         {t.yes}
       </Button>
       <Button
+        size="small"
         disabled={state === 'sending'}
         onClick={() => {
           answer(false);

@@ -8,7 +8,7 @@ import type { InstanceSummary, ModsKind, ModsPlan, ModsProgress } from '../../li
 import { formatBytes } from '../../lib/format';
 import { describeIpcError, ipc, onModsProgress } from '../../lib/ipc';
 import { strings } from '../../lib/strings';
-import { Dialog } from './Dialog';
+import { Dialog } from '../../components/Dialog';
 import styles from './Mods.module.css';
 import { Problems } from './Problems';
 

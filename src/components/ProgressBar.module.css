@@ -1,0 +1,48 @@
+/* A native progress element drawn the same in WebView2, WebKitGTK and WKWebView. */
+.bar {
+  display: block;
+  inline-size: 100%;
+  block-size: 6px;
+  appearance: none;
+  border: 0;
+  border-radius: var(--radius-pill);
+  overflow: hidden;
+  background: var(--color-border);
+  color: var(--color-accent);
+}
+
+.bar::-webkit-progress-bar {
+  border-radius: var(--radius-pill);
+  background: var(--color-border);
+}
+
+.bar::-webkit-progress-value {
+  border-radius: var(--radius-pill);
+  background: var(--color-accent);
+}
+
+.bar::-moz-progress-bar {
+  border-radius: var(--radius-pill);
+  background: var(--color-accent);
+}
+
+/* Contrast themes: the track outlined, the value in the highlight color. */
+@media (forced-colors: active) {
+  .bar {
+    forced-color-adjust: none;
+    border: 1px solid CanvasText;
+    background: Canvas;
+  }
+
+  .bar::-webkit-progress-bar {
+    background: Canvas;
+  }
+
+  .bar::-webkit-progress-value {
+    background: Highlight;
+  }
+
+  .bar::-moz-progress-bar {
+    background: Highlight;
+  }
+}

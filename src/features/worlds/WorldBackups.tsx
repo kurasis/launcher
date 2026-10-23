@@ -6,7 +6,7 @@ import type { BackupInfo, LocalWorld, WorldsState } from '../../lib/contracts';
 import { formatBytes } from '../../lib/format';
 import { ipc } from '../../lib/ipc';
 import { numberLocale, strings } from '../../lib/strings';
-import { Dialog } from '../mods/Dialog';
+import { Dialog } from '../../components/Dialog';
 import { worldsErrorText } from './useWorlds';
 import styles from './Worlds.module.css';
 

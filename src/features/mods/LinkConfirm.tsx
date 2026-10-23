@@ -4,7 +4,7 @@ import forms from '../../components/forms.module.css';
 import { ipc } from '../../lib/ipc';
 import { strings } from '../../lib/strings';
 import { useShownError } from '../../lib/useShownError';
-import { Dialog } from './Dialog';
+import { Dialog } from '../../components/Dialog';
 import styles from './Mods.module.css';
 
 /** Asks before a link from a project's page opens in the browser (D-066). */

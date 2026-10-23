@@ -1144,7 +1144,9 @@
       "cancel": "Cancel",
       "working": "Deleting…",
       "deleted": "\"{name}\" was deleted.",
-      "deletedWithBackup": "\"{name}\" was backed up and deleted. Backups can bring it back."
+      "deletedWithBackup": "\"{name}\" was backed up and deleted. Backups can bring it back.",
+      "checking": "Looking at what the folder holds…",
+      "retry": "Try again"
     },
     "settings": {
       "title": "Settings",
@@ -2559,7 +2561,11 @@
       "approvalLarge": "{files, plural, one {# file} other {# files}} ({size}) will be downloaded over a metered connection.",
       "approvalOverLimit": "This download of {size} would pass your monthly limit: {used} of {limit} used so far.",
       "allow": "Download",
-      "decline": "Don’t download"
+      "decline": "Don’t download",
+      "approvalFor": "{files, plural, one {# file} other {# files}} for “{name}” will be downloaded over a metered connection.",
+      "monthUsed": "Used this month: {used}.",
+      "monthUsedOfLimit": "Used this month: {used} of {limit}.",
+      "showQuestion": "Show the question"
     },
     "network": {
       "offline": "Offline",
@@ -2632,7 +2638,8 @@
         "signature": "The update's signature did not match, so it was not installed.",
         "install": "The update could not be installed. Download it from the link instead."
       },
-      "rolledBack": "Version {failed} did not start properly, so the launcher went back to version {version}. Your settings are as they were before the update. Version {failed} will not be installed again; a fixed version will be."
+      "rolledBack": "Version {failed} did not start properly, so the launcher went back to version {version}. Your settings are as they were before the update. Version {failed} will not be installed again; a fixed version will be.",
+      "notesLead": "What’s new:"
     },
     "downloads": {
       "title": "Downloads",
