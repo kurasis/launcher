@@ -1,42 +1,28 @@
-import { useEffect, useRef, useState } from 'react';
+import { type Dispatch, type SetStateAction, useEffect, useId, useRef, useState } from 'react';
 import { Button } from '../../components/Button';
-import { Field } from '../../components/Field';
+import { coveredByDialog, inDialog } from '../../components/dialogStack';
 import { Icon } from '../../components/Icon';
-import forms from '../../components/forms.module.css';
-import type {
-  AppSnapshot,
-  ChatRoom,
-  FriendAction,
-  FriendPerson,
-  FriendsView,
-  SettingsView,
-} from '../../lib/contracts';
-import { accountProblem, friendsProblem, ipc, onFriendsMessage } from '../../lib/ipc';
+import { Notice } from '../../components/Notice';
+import type { AppSnapshot, FriendsView, SettingsView } from '../../lib/contracts';
+import { onFriendsMessage } from '../../lib/ipc';
 import { strings } from '../../lib/strings';
+import { usePlayerHeads } from '../skins/usePlayerHeads';
+import { ChatList } from './ChatList';
 import { ChatView } from './ChatView';
-import type { GameForInvites } from './InviteCard';
-import { inviteBody } from './invite';
-import { worldOfPresence } from './worldInvite';
+import { ConfirmEmail } from './ConfirmEmail';
+import { focusLost } from './focus';
 import styles from './Friends.module.css';
+import { FriendsTab } from './FriendsTab';
+import type { GameForInvites } from './InviteCard';
+import { NewGroup } from './NewGroup';
+import { RequestsTab } from './RequestsTab';
 import { playChime, unlockSoundOnFirstInput } from './sound';
-import { problemText, roomTitle, sanctionText, useFriends } from './useFriends';
+import { Spinner } from './Spinner';
+import { problemText, sanctionText, useFriends } from './useFriends';
 
 const t = strings.friends;
 type Tab = 'chats' | 'friends' | 'requests';
-const NAME_MAX = 40;
-const GROUP_MAX = 20;
-
-/**
- * Friends and chats of the launcher account (D-064): a small chat button in
- * the corner, next to the downloads, with the whole friends system in its
- * panel.
- */
-/** "Online", "Playing Minecraft 1.21.1" or "In the world Our base". */
-function presenceText(playing: string | null): string {
-  if (playing === null) return t.online;
-  const world = worldOfPresence(playing);
-  return world === null ? t.playing({ game: playing }) : t.inWorld({ name: world });
-}
+const TABS: readonly Tab[] = ['chats', 'friends', 'requests'];
 
 /** The running game's server as an invite, and the installations to join with. */
 function gameForInvites(snapshot: AppSnapshot, openWorld: (room: string) => void): GameForInvites {
@@ -58,85 +44,134 @@ function gameForInvites(snapshot: AppSnapshot, openWorld: (room: string) => void
   };
 }
 
+/** Where the sheet was: it opens again on the same tab and chat. */
+interface Place {
+  tab: Tab;
+  room: string | null;
+  /** A new group is being made in the conversation pane. */
+  grouping: boolean;
+}
+
+/**
+ * Friends and chats of the launcher account (D-064): a row of concept A's rail with a
+ * count of unread messages and requests, and the whole friends system in a side sheet
+ * at the window's inline end (D-072).
+ */
 export function FriendsCorner({
   snapshot,
   onOpenAccounts,
   onOpenWorld,
-  placement = 'corner',
 }: {
   snapshot: AppSnapshot;
-  /** "rail": a row of concept A's rail, the panel a sheet at the window's edge; "corner": a round button. */
-  placement?: 'corner' | 'rail';
   onOpenAccounts: () => void;
   /** Shows a room in Worlds, such as one joined from a chat invite. */
   onOpenWorld: (room: string) => void;
 }) {
   const settings = snapshot.settings;
   const [open, setOpen] = useState(false);
+  const [place, setPlace] = useState<Place>({ tab: 'chats', room: null, grouping: false });
   const buttonRef = useRef<HTMLButtonElement>(null);
+  const slot = useRef<HTMLDivElement>(null);
   const game = gameForInvites(snapshot, (room) => {
     setOpen(false);
     onOpenWorld(room);
   });
   const view = useFriends();
-  const [roomId, setRoomId] = useState<string | null>(null);
-  useChime(view, settings, open ? roomId : null);
+  // The chat on screen makes no sound for its own messages; none is while a new group
+  // is being made in its place.
+  useChime(view, settings, open && place.tab === 'chats' && !place.grouping ? place.room : null);
+
+  // Like a press on the scrim, the focus or a press going anywhere outside the sheet and
+  // its row puts the sheet away: nothing under it can be reached while it is open. A
+  // dialog over it (a question from the launcher, the command palette) keeps it, with
+  // its scrim, and so does a lost focus. Escape closes it from anywhere, unless a
+  // control in it took the key (a menu, a question) or a dialog is open (the key is
+  // the dialog's).
+  useEffect(() => {
+    if (!open) return;
+    const dialogOpen = () =>
+      coveredByDialog(null) || document.querySelector('[aria-modal="true"]') !== null;
+    const elsewhere = (target: EventTarget | null) =>
+      target instanceof Node &&
+      !(slot.current?.contains(target) ?? true) &&
+      !inDialog(target) &&
+      !dialogOpen();
+    const onFocus = (event: FocusEvent) => {
+      if (elsewhere(event.target)) setOpen(false);
+    };
+    const onPress = (event: PointerEvent) => {
+      if (elsewhere(event.target)) setOpen(false);
+    };
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape' || event.defaultPrevented || event.isComposing) return;
+      if (dialogOpen()) return;
+      setOpen(false);
+      buttonRef.current?.focus();
+    };
+    document.addEventListener('focusin', onFocus, true);
+    document.addEventListener('pointerdown', onPress, true);
+    window.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('focusin', onFocus, true);
+      document.removeEventListener('pointerdown', onPress, true);
+      window.removeEventListener('keydown', onKey);
+    };
+  }, [open]);
+
   if (view === null) return null;
   const waiting = view.unread + view.incoming.length;
-  const rail = placement === 'rail';
-  // Closing puts focus back on the button, wherever the panel was.
+  // Closing puts focus back on the rail's row.
   const close = () => {
     setOpen(false);
     buttonRef.current?.focus();
   };
-  const panel = open && (
-    <FriendsPanel
-      view={view}
-      settings={settings}
-      game={game}
-      roomId={roomId}
-      onRoom={setRoomId}
-      onOpenAccounts={() => {
-        setOpen(false);
-        onOpenAccounts();
-      }}
-      onClose={rail ? close : undefined}
-    />
-  );
+  const name = [
+    t.open,
+    view.signedIn && view.unread > 0 && t.unread({ count: view.unread }),
+    view.signedIn && view.incoming.length > 0 && t.requestsWaiting({ count: view.incoming.length }),
+  ]
+    .filter(Boolean)
+    .join(', ');
   return (
-    <div
-      className={rail ? styles.railSlot : styles.corner}
-      onKeyDown={(event) => {
-        if (event.key === 'Escape' && open) close();
-      }}
-    >
-      {/* The corner's panel sits above its button; the rail's sheet comes after it. */}
-      {!rail && panel}
+    <div ref={slot} className={styles.railSlot}>
       <button
         ref={buttonRef}
         type="button"
-        className={rail ? styles.railButton : styles.button}
-        aria-label={view.unread > 0 ? `${t.open}, ${t.unread({ count: view.unread })}` : t.open}
+        className={styles.railButton}
+        aria-label={name}
         aria-expanded={open}
         title={t.open}
         onClick={() => {
-          setOpen(!open);
+          if (open) close();
+          else setOpen(true);
         }}
       >
-        <svg className={styles.icon} viewBox="0 0 24 24" aria-hidden="true">
-          <path d="M20 12.5a7.5 7.5 0 0 1-11 6.6L4 20.5l1.4-4.6A7.5 7.5 0 1 1 20 12.5Z" />
-          <path d="M9 12.5h.01M12.5 12.5h.01M16 12.5h.01" />
-        </svg>
-        {rail && (
-          <span className={styles.railLabel} aria-hidden="true">
-            {t.title}
-          </span>
-        )}
+        <Icon name="friends" className={styles.railIcon} />
+        <span className={styles.railLabel} aria-hidden="true">
+          {t.title}
+        </span>
         {view.signedIn && waiting > 0 && (
           <span className={styles.badge}>{waiting > 99 ? '99+' : waiting}</span>
         )}
       </button>
-      {rail && panel}
+      {/* After its row, so Tab goes from one into the other. */}
+      {open && (
+        <>
+          <FriendsSheet
+            view={view}
+            settings={settings}
+            game={game}
+            place={place}
+            onPlace={setPlace}
+            onOpenAccounts={() => {
+              setOpen(false);
+              onOpenAccounts();
+            }}
+            onClose={close}
+          />
+          <div className={styles.scrim} aria-hidden="true" onClick={close} />
+        </>
+      )}
     </div>
   );
 }
@@ -184,172 +219,195 @@ function useChime(view: FriendsView | null, settings: SettingsView, openRoom: st
   }, [incoming]);
 }
 
-function Spinner({ label }: { label: string }) {
-  return (
-    <p className={styles.loading} role="status">
-      <span className={styles.spinner} aria-hidden="true" />
-      {label}
-    </p>
-  );
+/** Every player the sheet may show a face of, once. */
+function nicksOf(view: FriendsView): string[] {
+  const people = [...view.friends, ...view.incoming, ...view.outgoing, ...view.blocked];
+  const members = view.rooms.flatMap((room) => room.members);
+  return [...people, ...members]
+    .filter((person) => person.id !== view.me?.id)
+    .map((person) => person.nick);
 }
 
-/** The account has no confirmed email yet: what to do, right here. */
-function ConfirmEmail({ onOpenAccounts }: { onOpenAccounts: () => void }) {
-  const a = strings.accounts;
-  const [checking, setChecking] = useState(false);
-  const [note, setNote] = useState<string | null>(null);
-  const check = async () => {
-    setChecking(true);
-    setNote(null);
-    try {
-      // Confirmed: friends tries again by itself and this panel goes.
-      const confirmed = await ipc.launcherAccountRecheck();
-      if (!confirmed) setNote(a.launcherStillNotConfirmed);
-    } catch (e) {
-      setNote(a.launcherProblems[accountProblem(e)]);
-    } finally {
-      setChecking(false);
-    }
-  };
-  return (
-    <div className={styles.stack}>
-      <p>{t.emailNeeded}</p>
-      <div className={styles.inline}>
-        <Button variant="primary" disabled={checking} onClick={() => void check()}>
-          {checking ? a.launcherChecking : a.launcherCheck}
-        </Button>
-        <Button
-          onClick={() => {
-            setNote(null);
-            void ipc
-              .launcherAccountResendConfirmation()
-              .then((problem) => {
-                setNote(problem === null ? t.emailResent : a.launcherProblems[problem]);
-              })
-              .catch(() => {
-                setNote(a.launcherProblems.server);
-              });
-          }}
-        >
-          {a.launcherResend}
-        </Button>
-      </div>
-      {checking && <Spinner label={t.checking} />}
-      {note !== null && (
-        <p className={styles.muted} role="status">
-          {note}
-        </p>
-      )}
-      <button type="button" className={styles.link} onClick={onOpenAccounts}>
-        {t.goToAccounts}
-      </button>
-    </div>
-  );
-}
-
-function FriendsPanel({
+function FriendsSheet({
   view,
   settings,
   game,
-  roomId,
-  onRoom,
+  place,
+  onPlace,
   onOpenAccounts,
   onClose,
 }: {
   view: FriendsView;
   settings: SettingsView;
   game: GameForInvites;
-  roomId: string | null;
-  onRoom: (room: string | null) => void;
+  place: Place;
+  onPlace: Dispatch<SetStateAction<Place>>;
   onOpenAccounts: () => void;
-  /** The rail's sheet: focus moves into it when it opens, and it has its own Close. */
-  onClose?: (() => void) | undefined;
+  onClose: () => void;
 }) {
-  const [tab, setTab] = useState<Tab>('chats');
+  const sheet = useRef<HTMLElement>(null);
   const heading = useRef<HTMLHeadingElement>(null);
-  const sheet = onClose !== undefined;
+  const plus = useRef<HTMLButtonElement>(null);
+  const pane = useRef<HTMLDivElement>(null);
+  // The control that had the focus last, and where it goes when the new group's form goes.
+  const lastFocus = useRef<HTMLElement | null>(null);
+  const afterGroup = useRef<'chat' | 'plus' | null>(null);
+  const [needsShown, setNeedsShown] = useState(false);
+  const headingId = useId();
+  const tabsId = useId();
+  const heads = usePlayerHeads(nicksOf(view));
+  // Opening the sheet moves the focus into it.
   useEffect(() => {
-    if (sheet) heading.current?.focus();
-  }, [sheet]);
-  const [grouping, setGrouping] = useState(false);
-  const room = roomId === null ? undefined : view.rooms.find((r) => r.id === roomId);
-  const setRoomId = onRoom;
+    heading.current?.focus();
+  }, []);
+  // The new group's form went: the focus goes to the group made, or back to "+".
+  const { grouping } = place;
+  useEffect(() => {
+    const next = afterGroup.current;
+    afterGroup.current = null;
+    if (grouping || next === null || !focusLost()) return;
+    const target = next === 'chat' ? pane.current?.querySelector('textarea') : plus.current;
+    target?.focus();
+  }, [grouping]);
+  // Whatever else took the focus away with it (a chat left, the last request answered):
+  // the open tab takes it, so Tab and Escape go on working in the sheet.
+  useEffect(() => {
+    const gone = lastFocus.current;
+    if (gone === null || gone.isConnected || !focusLost()) return;
+    const tab = sheet.current?.querySelector<HTMLElement>('[role="tab"][aria-selected="true"]');
+    (tab ?? heading.current)?.focus();
+  });
   const unconfirmed = view.problem === 'email_not_confirmed';
+  const ready = view.signedIn && view.problem === null && view.me !== null;
+  const { tab } = place;
+  const room = place.room === null ? undefined : view.rooms.find((r) => r.id === place.room);
+  const show = (next: Partial<Place>) => {
+    onPlace((current) => ({ ...current, ...next }));
+  };
+  const openRoom = (id: string) => {
+    onPlace({ tab: 'chats', room: id, grouping: false });
+  };
+  const fewFriends = view.friends.length < 2;
 
   let body;
   if (unconfirmed) {
     body = <ConfirmEmail onOpenAccounts={onOpenAccounts} />;
   } else if (!view.signedIn) {
     body = (
-      <div className={styles.stack}>
+      <div className={styles.state}>
         <p>{t.signedOut}</p>
         <Button variant="primary" onClick={onOpenAccounts}>
           {t.goToAccounts}
         </Button>
       </div>
     );
-  } else if (room !== undefined) {
-    body = (
-      <ChatView
-        key={room.id}
-        room={room}
-        view={view}
-        game={game}
-        onBack={() => {
-          setRoomId(null);
-        }}
-      />
-    );
-  } else if (grouping) {
-    body = (
-      <NewGroup
-        view={view}
-        onDone={(created) => {
-          setGrouping(false);
-          if (created !== null) setRoomId(created);
-        }}
-      />
-    );
   } else {
-    const tabs: Tab[] = ['chats', 'friends', 'requests'];
+    const label = (item: Tab) => {
+      const count = item === 'chats' ? view.unread : item === 'requests' ? view.incoming.length : 0;
+      return count > 0 ? t.tabCount({ label: t.tabs[item], count }) : t.tabs[item];
+    };
     body = (
       <>
-        <div className={styles.tabs} role="tablist">
-          {tabs.map((item) => (
+        <div
+          role="tablist"
+          aria-label={t.title}
+          className={styles.tabs}
+          onKeyDown={(event) => {
+            const keys: Record<string, number> = { ArrowLeft: -1, ArrowRight: 1 };
+            let step = keys[event.key];
+            const at = TABS.indexOf(tab);
+            let next: Tab | undefined;
+            if (event.key === 'Home') next = TABS[0];
+            else if (event.key === 'End') next = TABS[TABS.length - 1];
+            else if (step !== undefined) {
+              if (getComputedStyle(event.currentTarget).direction === 'rtl') step = -step;
+              next = TABS[(at + step + TABS.length) % TABS.length];
+            }
+            if (next === undefined) return;
+            event.preventDefault();
+            show({ tab: next });
+            event.currentTarget.querySelector<HTMLElement>(`[data-tab="${next}"]`)?.focus();
+          }}
+        >
+          {TABS.map((item) => (
             <button
               key={item}
               type="button"
               role="tab"
-              className={styles.tab}
+              id={`${tabsId}-${item}`}
+              data-tab={item}
               aria-selected={tab === item}
+              aria-controls={`${tabsId}-panel`}
+              tabIndex={tab === item ? 0 : -1}
+              className={styles.tab}
               onClick={() => {
-                setTab(item);
+                show({ tab: item });
               }}
             >
-              {t.tabs[item]}
-              {item === 'requests' && view.incoming.length > 0 && (
-                <span className={styles.count}>{view.incoming.length}</span>
-              )}
-              {item === 'chats' && view.unread > 0 && (
-                <span className={styles.count}>{view.unread}</span>
-              )}
+              {label(item)}
             </button>
           ))}
         </div>
-        <div role="tabpanel">
+        <div
+          role="tabpanel"
+          id={`${tabsId}-panel`}
+          aria-labelledby={`${tabsId}-${tab}`}
+          className={styles.tabPanel}
+        >
           {tab === 'chats' && (
-            <Chats
-              view={view}
-              onOpen={setRoomId}
-              onNewGroup={() => {
-                setGrouping(true);
-              }}
-            />
+            <div className={styles.chats} data-empty={view.rooms.length === 0 || undefined}>
+              {view.rooms.length > 0 && (
+                <div className={styles.chatList}>
+                  <ChatList view={view} heads={heads} chosen={room?.id ?? null} onOpen={openRoom} />
+                </div>
+              )}
+              <div ref={pane} className={styles.pane}>
+                {grouping ? (
+                  <NewGroup
+                    view={view}
+                    heads={heads}
+                    onDone={(created) => {
+                      afterGroup.current = created === null ? 'plus' : 'chat';
+                      onPlace((current) => ({
+                        tab: 'chats',
+                        room: created ?? current.room,
+                        grouping: false,
+                      }));
+                    }}
+                  />
+                ) : room !== undefined ? (
+                  <ChatView
+                    key={room.id}
+                    room={room}
+                    view={view}
+                    game={game}
+                    heads={heads}
+                    onLeft={() => {
+                      // Only if it is still the chat on screen: the player may have moved on.
+                      const left = room.id;
+                      onPlace((current) =>
+                        current.room === left ? { ...current, room: null } : current,
+                      );
+                    }}
+                  />
+                ) : (
+                  <p className={styles.paneEmpty}>
+                    {view.rooms.length > 0 ? t.chooseChat : t.noChats}
+                  </p>
+                )}
+              </div>
+            </div>
           )}
           {tab === 'friends' && (
-            <Friends view={view} settings={settings} game={game} onOpen={setRoomId} />
+            <FriendsTab
+              view={view}
+              settings={settings}
+              game={game}
+              heads={heads}
+              onOpen={openRoom}
+            />
           )}
-          {tab === 'requests' && <Requests view={view} />}
+          {tab === 'requests' && <RequestsTab view={view} heads={heads} />}
         </div>
       </>
     );
@@ -357,563 +415,59 @@ function FriendsPanel({
 
   return (
     <section
-      className={styles.panel}
-      aria-label={t.title}
-      data-signed-in={view.signedIn ? 'true' : undefined}
+      ref={sheet}
+      className={styles.sheet}
+      aria-labelledby={headingId}
+      onFocus={(event) => {
+        lastFocus.current = event.target instanceof HTMLElement ? event.target : null;
+      }}
     >
       <div className={styles.head}>
-        <h2 ref={heading} className={styles.title} tabIndex={sheet ? -1 : undefined}>
-          {t.title}
+        <h2 id={headingId} ref={heading} className={styles.title} tabIndex={-1}>
+          {t.open}
         </h2>
-        {onClose !== undefined && (
-          <button
-            type="button"
-            className={styles.close}
-            aria-label={t.close}
-            title={t.close}
-            onClick={onClose}
+        {ready && (
+          <Button
+            ref={plus}
+            size="small"
+            className={styles.square}
+            aria-label={t.newGroup}
+            title={fewFriends ? t.newGroupNeeds : t.newGroup}
+            // Not yet for so few friends: a press says why.
+            aria-disabled={fewFriends || undefined}
+            data-unavailable={fewFriends || undefined}
+            onClick={() => {
+              if (fewFriends) setNeedsShown(true);
+              else show({ tab: 'chats', grouping: true });
+            }}
           >
-            <Icon name="x" size={18} />
-          </button>
+            <Icon name="plus" size={18} />
+          </Button>
         )}
+        <button
+          type="button"
+          className={styles.close}
+          aria-label={t.close}
+          title={t.close}
+          onClick={onClose}
+        >
+          <Icon name="x" size={18} />
+        </button>
       </div>
-      {view.sanction !== null && (
-        <p className={styles.error} role="status">
-          {sanctionText(view.sanction)}
+      {needsShown && fewFriends && (
+        <p className={styles.muted} role="status">
+          {t.newGroupNeeds}
         </p>
       )}
+      {view.sanction !== null && <Notice tone="warning">{sanctionText(view.sanction)}</Notice>}
       {view.signedIn && view.problem !== null ? (
-        !unconfirmed && (
-          <p className={styles.muted} role="status">
-            {problemText(view.problem)}
-          </p>
-        )
+        !unconfirmed && <Notice tone="warning">{problemText(view.problem)}</Notice>
       ) : view.signedIn && view.me === null ? (
         <Spinner label={t.connecting} />
       ) : (
-        view.signedIn &&
-        !view.connected && (
-          <p className={styles.muted} role="status">
-            {t.offline}
-          </p>
-        )
+        view.signedIn && !view.connected && <Notice tone="info">{t.offline}</Notice>
       )}
       {body}
     </section>
-  );
-}
-
-/** Runs one action at a time and keeps what went wrong. */
-function useAction() {
-  const [pending, setPending] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const run = async <T,>(work: () => Promise<T>): Promise<T | null> => {
-    setPending(true);
-    setError(null);
-    try {
-      return await work();
-    } catch (e) {
-      setError(problemText(friendsProblem(e)));
-      return null;
-    } finally {
-      setPending(false);
-    }
-  };
-  return { pending, error, run };
-}
-
-function Chats({
-  view,
-  onOpen,
-  onNewGroup,
-}: {
-  view: FriendsView;
-  onOpen: (room: string) => void;
-  onNewGroup: () => void;
-}) {
-  const nick = (id: string) =>
-    id === view.me?.id
-      ? t.you
-      : (view.rooms.flatMap((r) => r.members).find((m) => m.id === id)?.nick ?? '—');
-  return (
-    <div className={styles.stack}>
-      <Button disabled={view.friends.length < 2} onClick={onNewGroup}>
-        {t.newGroup}
-      </Button>
-      {view.rooms.length === 0 ? (
-        <p className={styles.muted}>{t.noChats}</p>
-      ) : (
-        <RoomSections view={view} nick={nick} onOpen={onOpen} />
-      )}
-    </div>
-  );
-}
-
-/** Rooms with unread messages first, apart from the rest. */
-function RoomSections({
-  view,
-  nick,
-  onOpen,
-}: {
-  view: FriendsView;
-  nick: (id: string) => string;
-  onOpen: (room: string) => void;
-}) {
-  const unread = view.rooms.filter((r) => r.unread > 0);
-  const read = view.rooms.filter((r) => r.unread === 0);
-  const list = (rooms: ChatRoom[]) => (
-    <ul className={styles.list}>
-      {rooms.map((room) => (
-        <li key={room.id}>
-          <button
-            type="button"
-            className={styles.roomButton}
-            data-unread={room.unread > 0 ? 'true' : undefined}
-            onClick={() => {
-              onOpen(room.id);
-            }}
-          >
-            <span className={styles.roomName}>{roomTitle(room, view.me)}</span>
-            {room.unread > 0 && (
-              <span className={styles.count} aria-label={t.unread({ count: room.unread })}>
-                {room.unread}
-              </span>
-            )}
-            {room.last !== null && (
-              <span className={styles.preview} dir="auto">
-                {nick(room.last.sender)}: {room.last.body}
-              </span>
-            )}
-          </button>
-        </li>
-      ))}
-    </ul>
-  );
-  if (unread.length === 0) return list(read);
-  return (
-    <>
-      <h3 className={styles.subtitle}>{t.unreadSection}</h3>
-      {list(unread)}
-      {read.length > 0 && (
-        <>
-          <h3 className={styles.subtitle}>{t.readSection}</h3>
-          {list(read)}
-        </>
-      )}
-    </>
-  );
-}
-
-function Friends({
-  view,
-  settings,
-  game,
-  onOpen,
-}: {
-  view: FriendsView;
-  settings: SettingsView;
-  game: GameForInvites;
-  onOpen: (room: string) => void;
-}) {
-  const [nick, setNick] = useState('');
-  const [notice, setNotice] = useState<string | null>(null);
-  const [confirming, setConfirming] = useState<{
-    action: 'block' | 'remove';
-    person: FriendPerson;
-  } | null>(null);
-  const action = useAction();
-
-  const act = async (what: FriendAction, person: FriendPerson) => {
-    setNotice(null);
-    setConfirming(null);
-    await action.run(() => ipc.friendsAct(what, person.id));
-  };
-
-  return (
-    <div className={styles.stack}>
-      <form
-        className={styles.stack}
-        onSubmit={(event) => {
-          event.preventDefault();
-          const wanted = nick.trim();
-          if (wanted.length === 0) return;
-          setNotice(null);
-          void action
-            .run(() => ipc.friendsRequest(wanted))
-            .then((result) => {
-              if (result === null) return;
-              setNotice(
-                result === 'friends' ? t.nowFriends({ nick: wanted }) : t.sent({ nick: wanted }),
-              );
-              setNick('');
-            });
-        }}
-      >
-        <Field label={t.addLabel} hint={t.addHint}>
-          {(props) => (
-            <div className={styles.inline}>
-              <input
-                {...props}
-                className={forms.input}
-                value={nick}
-                maxLength={32}
-                autoComplete="off"
-                spellCheck={false}
-                dir="ltr"
-                onChange={(event) => {
-                  setNick(event.target.value);
-                }}
-              />
-              <Button type="submit" disabled={action.pending || nick.trim().length === 0}>
-                {t.add}
-              </Button>
-            </div>
-          )}
-        </Field>
-      </form>
-      {notice !== null && (
-        <p className={styles.success} role="status">
-          {notice}
-        </p>
-      )}
-      {action.error !== null && (
-        <p className={styles.error} role="alert">
-          {action.error}
-        </p>
-      )}
-      {confirming !== null && (
-        <div className={styles.confirm} role="alertdialog" aria-label={confirming.person.nick}>
-          <p>
-            {confirming.action === 'block'
-              ? t.confirmBlock({ nick: confirming.person.nick })
-              : t.confirmRemove({ nick: confirming.person.nick })}
-          </p>
-          <div className={styles.inline}>
-            <Button
-              variant="primary"
-              disabled={action.pending}
-              onClick={() => void act(confirming.action, confirming.person)}
-            >
-              {confirming.action === 'block' ? t.block : t.remove}
-            </Button>
-            <Button
-              onClick={() => {
-                setConfirming(null);
-              }}
-            >
-              {t.cancel}
-            </Button>
-          </div>
-        </div>
-      )}
-      <label className={forms.choice}>
-        <input
-          type="checkbox"
-          checked={view.visible}
-          disabled={action.pending}
-          onChange={(event) => {
-            const visible = event.target.checked;
-            void action.run(() => ipc.friendsSetVisible(visible));
-          }}
-        />
-        {t.showOnline}
-      </label>
-      <label className={forms.choice}>
-        <input
-          type="checkbox"
-          checked={settings.chatSound}
-          disabled={action.pending || !settings.writable}
-          onChange={(event) => {
-            const on = event.target.checked;
-            void action.run(() => ipc.setAppSettings({ chatSound: on }));
-          }}
-        />
-        {t.chatSound}
-      </label>
-      <label className={forms.choice}>
-        <input
-          type="checkbox"
-          checked={settings.chatNotifications}
-          disabled={action.pending || !settings.writable}
-          onChange={(event) => {
-            const on = event.target.checked;
-            void action.run(() => ipc.setAppSettings({ chatNotifications: on }));
-          }}
-        />
-        {t.chatNotifications}
-      </label>
-      {view.friends.length === 0 ? (
-        <p className={styles.muted}>{t.noFriends}</p>
-      ) : (
-        <ul className={styles.list}>
-          {view.friends.map((person) => (
-            <li key={person.id} className={styles.row}>
-              <span className={styles.who}>
-                <span className={styles.nick}>
-                  <span
-                    className={person.online ? styles.online : styles.away}
-                    aria-hidden="true"
-                  />
-                  {person.nick}
-                </span>
-                {person.online && (
-                  <span className={styles.status} dir="auto">
-                    {presenceText(person.playing)}
-                  </span>
-                )}
-              </span>
-              <span className={styles.actions}>
-                <button
-                  type="button"
-                  className={styles.link}
-                  disabled={action.pending}
-                  onClick={() =>
-                    void action
-                      .run(() => ipc.friendsOpenDirect(person.id))
-                      .then((room) => {
-                        if (room !== null) onOpen(room);
-                      })
-                  }
-                >
-                  {t.message}
-                </button>
-                {game.invite !== null && (
-                  <button
-                    type="button"
-                    className={styles.link}
-                    disabled={action.pending}
-                    onClick={() => {
-                      const invite = game.invite;
-                      if (invite === null) return;
-                      setNotice(null);
-                      void action
-                        .run(async () => {
-                          const room = await ipc.friendsOpenDirect(person.id);
-                          await ipc.friendsSend(room, inviteBody(invite));
-                        })
-                        .then((sent) => {
-                          if (sent !== null) setNotice(t.inviteSent({ nick: person.nick }));
-                        });
-                    }}
-                  >
-                    {t.inviteFriend}
-                  </button>
-                )}
-                <button
-                  type="button"
-                  className={styles.quiet}
-                  onClick={() => {
-                    setConfirming({ action: 'remove', person });
-                  }}
-                >
-                  {t.remove}
-                </button>
-                <button
-                  type="button"
-                  className={styles.quiet}
-                  onClick={() => {
-                    setConfirming({ action: 'block', person });
-                  }}
-                >
-                  {t.block}
-                </button>
-              </span>
-            </li>
-          ))}
-        </ul>
-      )}
-      {view.blocked.length > 0 && (
-        <>
-          <h3 className={styles.subtitle}>{t.blocked}</h3>
-          <p className={styles.muted}>{t.blockedHint}</p>
-          <ul className={styles.list}>
-            {view.blocked.map((person) => (
-              <li key={person.id} className={styles.row}>
-                <span className={styles.nick}>{person.nick}</span>
-                <button
-                  type="button"
-                  className={styles.link}
-                  disabled={action.pending}
-                  onClick={() => void act('unblock', person)}
-                >
-                  {t.unblock}
-                </button>
-              </li>
-            ))}
-          </ul>
-        </>
-      )}
-    </div>
-  );
-}
-
-function Requests({ view }: { view: FriendsView }) {
-  const action = useAction();
-  const act = (what: FriendAction, person: FriendPerson) => {
-    void action.run(() => ipc.friendsAct(what, person.id));
-  };
-  if (view.incoming.length === 0 && view.outgoing.length === 0) {
-    return <p className={styles.muted}>{t.noRequests}</p>;
-  }
-  return (
-    <div className={styles.stack}>
-      {action.error !== null && (
-        <p className={styles.error} role="alert">
-          {action.error}
-        </p>
-      )}
-      {view.incoming.length > 0 && (
-        <>
-          <h3 className={styles.subtitle}>{t.incoming}</h3>
-          {view.incoming.length > 1 && (
-            <Button
-              disabled={action.pending}
-              onClick={() => void action.run(() => ipc.friendsDeclineAll())}
-            >
-              {t.declineAll}
-            </Button>
-          )}
-          <ul className={styles.list}>
-            {view.incoming.map((person) => (
-              <li key={person.id} className={styles.row}>
-                <span className={styles.nick}>{person.nick}</span>
-                <span className={styles.actions}>
-                  <button
-                    type="button"
-                    className={styles.link}
-                    disabled={action.pending}
-                    onClick={() => {
-                      act('accept', person);
-                    }}
-                  >
-                    {t.accept}
-                  </button>
-                  <button
-                    type="button"
-                    className={styles.quiet}
-                    disabled={action.pending}
-                    onClick={() => {
-                      act('decline', person);
-                    }}
-                  >
-                    {t.decline}
-                  </button>
-                  <button
-                    type="button"
-                    className={styles.quiet}
-                    disabled={action.pending}
-                    onClick={() => {
-                      act('block', person);
-                    }}
-                  >
-                    {t.block}
-                  </button>
-                  <button
-                    type="button"
-                    className={styles.quiet}
-                    disabled={action.pending}
-                    onClick={() => void action.run(() => ipc.friendsReportRequest(person.id))}
-                  >
-                    {t.spam}
-                  </button>
-                </span>
-              </li>
-            ))}
-          </ul>
-        </>
-      )}
-      {view.outgoing.length > 0 && (
-        <>
-          <h3 className={styles.subtitle}>{t.outgoing}</h3>
-          <ul className={styles.list}>
-            {view.outgoing.map((person) => (
-              <li key={person.id} className={styles.row}>
-                <span className={styles.nick}>{person.nick}</span>
-                <button
-                  type="button"
-                  className={styles.quiet}
-                  disabled={action.pending}
-                  onClick={() => {
-                    act('cancel', person);
-                  }}
-                >
-                  {t.cancel}
-                </button>
-              </li>
-            ))}
-          </ul>
-        </>
-      )}
-    </div>
-  );
-}
-
-function NewGroup({ view, onDone }: { view: FriendsView; onDone: (room: string | null) => void }) {
-  const [name, setName] = useState('');
-  const [chosen, setChosen] = useState<Set<string>>(new Set());
-  const action = useAction();
-  const ready = name.trim().length > 0 && chosen.size >= 2 && chosen.size < GROUP_MAX;
-  return (
-    <form
-      className={styles.stack}
-      onSubmit={(event) => {
-        event.preventDefault();
-        if (!ready) return;
-        void action
-          .run(() => ipc.friendsCreateGroup(name.trim(), [...chosen]))
-          .then((room) => {
-            if (room !== null) onDone(room);
-          });
-      }}
-    >
-      <Field label={t.groupName}>
-        {(props) => (
-          <input
-            {...props}
-            className={forms.input}
-            value={name}
-            maxLength={NAME_MAX}
-            onChange={(event) => {
-              setName(event.target.value);
-            }}
-          />
-        )}
-      </Field>
-      <fieldset className={styles.choices}>
-        <legend className={styles.subtitle}>{t.groupMembers}</legend>
-        {view.friends.map((friend) => (
-          <label key={friend.id} className={styles.choice}>
-            <input
-              type="checkbox"
-              checked={chosen.has(friend.id)}
-              onChange={(event) => {
-                const next = new Set(chosen);
-                if (event.target.checked) next.add(friend.id);
-                else next.delete(friend.id);
-                setChosen(next);
-              }}
-            />
-            <span className={styles.nick}>{friend.nick}</span>
-          </label>
-        ))}
-      </fieldset>
-      {action.error !== null && (
-        <p className={styles.error} role="alert">
-          {action.error}
-        </p>
-      )}
-      <div className={styles.inline}>
-        <Button type="submit" variant="primary" disabled={!ready || action.pending}>
-          {t.createGroup}
-        </Button>
-        <Button
-          onClick={() => {
-            onDone(null);
-          }}
-        >
-          {t.back}
-        </Button>
-      </div>
-    </form>
   );
 }

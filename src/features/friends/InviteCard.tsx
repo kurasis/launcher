@@ -51,11 +51,13 @@ export function InviteCard({
   const target = choices.some((c) => c.id === chosen) ? chosen : (choices[0]?.id ?? '');
 
   return (
-    <div className={styles.invite}>
-      <p className={styles.inviteTitle}>{mine ? t.youInvited : t.invitedTo({ nick: from })}</p>
-      <p className={styles.inviteServer}>
-        <code dir="ltr">{invite.server}</code>
-        <span className={styles.muted}>{gameName(invite)}</span>
+    <div className={styles.card}>
+      <p className={styles.cardTitle}>{mine ? t.youInvited : t.invitedTo({ nick: from })}</p>
+      <p className={styles.cardFacts}>
+        <code className={styles.server} dir="ltr">
+          {invite.server}
+        </code>
+        <span>{gameName(invite)}</span>
       </p>
       {!mine &&
         (game.running ? (
@@ -82,8 +84,12 @@ export function InviteCard({
             )}
             <Button
               variant="primary"
-              disabled={join.pending || target === ''}
-              onClick={() => void join.run(target)}
+              size="small"
+              disabled={target === ''}
+              aria-disabled={join.pending || undefined}
+              onClick={() => {
+                if (!join.pending) void join.run(target);
+              }}
             >
               {join.pending ? t.joining : t.join}
             </Button>

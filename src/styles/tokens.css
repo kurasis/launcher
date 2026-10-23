@@ -56,11 +56,15 @@
   --color-accent-soft: #e3f1e8;
   --color-accent-text: #145a36;
   --color-mint: #3dd68c;
+  /* Text on the mint mark (counts on the rail): dark green in both themes. */
+  --color-on-mint: #0e2a1e;
   --color-glow: transparent;
   --color-focus: #0b6bcb;
   --color-hover: #eaf0ec;
   --color-selected: #e3f1e8;
   --color-scrim: rgb(18 59 42 / 38%);
+  /* Behind a side sheet (Friends): the screen stays readable under it. */
+  --color-scrim-soft: rgb(18 59 42 / 18%);
   --color-warning-bg: #fbefd9;
   --color-warning-text: #7a4b12;
   --color-success-bg: #e3f1e8;
@@ -158,6 +162,7 @@
     --color-hover: #1d2c24;
     --color-selected: #1a3a2a;
     --color-scrim: rgb(5 12 9 / 60%);
+    --color-scrim-soft: rgb(5 12 9 / 40%);
     --color-warning-bg: #3a2e18;
     --color-warning-text: #e0a458;
     --color-success-bg: #1a3a2a;
@@ -230,6 +235,7 @@
   --color-hover: #1d2c24;
   --color-selected: #1a3a2a;
   --color-scrim: rgb(5 12 9 / 60%);
+  --color-scrim-soft: rgb(5 12 9 / 40%);
   --color-warning-bg: #3a2e18;
   --color-warning-text: #e0a458;
   --color-success-bg: #1a3a2a;
