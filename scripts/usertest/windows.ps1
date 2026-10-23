@@ -739,14 +739,21 @@ try {
       # a special version by its id too).
       $search = Wait-For { Find-Input $ui.search } 20
       if ($search) { Type-Into $search $version; Start-Sleep -Seconds 1 } else { Say 'no version search box' }
-      # A version row reads "<id><tags><date>" (an installation card in the list beside
-      # it starts with the id too, but has no date at the end); a special version's
-      # starts with its name, which an earlier build shares with the build Mojang kept.
+      # A version row is a button that reads "<id><tags><date>", the date in the
+      # interface language ("Apr 1, 2026"; some languages put the day first), so it is
+      # told by its first text, the id itself (1.21 is not 1.21.1), and a year after it.
+      # A special version's row starts with its name, which an earlier build shares with
+      # the build Mojang kept.
       $shown = if ($isSpecial) { $specials[$version] } else { [pscustomobject]@{ name = $version; selected = $version } }
-      $pattern = "^$([regex]::Escape($shown.name))((?![\d.])[^\r\n]*)?\d{4}-\d\d-\d\d$"
       $rows = Wait-For {
         foreach ($candidate in $script:main.FindAll($Scope::Descendants, $Any)) {
-          try { if ($candidate.Current.IsKeyboardFocusable -and $candidate.Current.Name -match $pattern) { $candidate } } catch { }
+          try {
+            $c = $candidate.Current
+            if (-not $c.IsKeyboardFocusable -or -not $c.Name.StartsWith($shown.name, [StringComparison]::OrdinalIgnoreCase)) { continue }
+            if ($c.Name.Substring($shown.name.Length) -notmatch '\d{4}') { continue }
+            $first = @($candidate.FindAll($Scope::Descendants, $Any) | Where-Object { $_.Current.Name } | Select-Object -First 1)
+            if ($first -and $first[0].Current.Name -ieq $shown.name) { $candidate }
+          } catch { }
         }
       } 60
       if (-not $rows) { $result.install = 'failed'; $result.note = 'the version is not in the launcher list'; throw 'version not listed' }
