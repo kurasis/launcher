@@ -196,10 +196,10 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           # The newest skins mod's jars, each past Cloudflare's cache (a query
-          # of its own) so every one is a request to the server, eight at a
-          # time. One line per request: data centre (the part of cf-ray after
-          # the dash, like IAD), status, bytes received of the file's size,
-          # seconds.
+          # of its own) so every one is a request to the server, three at a
+          # time (more trips upd.lapi.sh's limit of 10 a second: 429). One
+          # line per request: data centre (the part of cf-ray after the dash,
+          # like IAD), status, bytes received of the file's size, seconds.
           tag=$(gh release list --limit 50 --json tagName \
             -q '[.[] | select(.tagName | startswith("skins-mod-v"))][0].tagName')
           version=${tag#skins-mod-v}
@@ -214,7 +214,7 @@ jobs:
             echo "${ray##*-} ${code:-000} ${bytes:-0} of ${length:-?} ${secs:-20}"
           }
           export -f fetch
-          xargs -P 8 -I{} bash -c 'fetch {}' < names | sort > answers
+          xargs -P 3 -I{} bash -c 'fetch {}' < names | sort > answers
           {
             echo "### Skins mod $version through Cloudflare: $(wc -l < answers) requests"
             echo '```'
