@@ -301,32 +301,16 @@ export type Messages = {
     readonly offlineHint: string;
     readonly demoHint: string;
     readonly skins: {
-      readonly title: string;
-      readonly hint: string;
       readonly skin: string;
       readonly cape: string;
       readonly noSkin: string;
-      readonly noCape: string;
-      readonly notShown: string;
       readonly loading: string;
-      readonly uploadSkin: string;
-      readonly uploadCape: string;
-      readonly removeSkin: string;
-      readonly removeCape: string;
-      readonly dropHere: string;
       readonly model: string;
       readonly classic: string;
       readonly slim: string;
-      readonly frameMsHint: string;
       readonly cancel: string;
-      readonly skinUploaded: string;
-      readonly capeUploaded: string;
-      readonly inGame: string;
       readonly skinRemoved: string;
       readonly capeRemoved: string;
-      readonly previewSkin: string;
-      readonly previewCape: string;
-      readonly limit: string;
       readonly signInFirst: string;
       readonly signInAgain: string;
       readonly openAccounts: string;
@@ -399,7 +383,6 @@ export type Messages = {
       readonly picked: {
         readonly titleSkin: string;
         readonly titleCape: string;
-        readonly checks: string;
         readonly size: (values: { width: string | number; height: string | number }) => string;
         readonly sizeHd: (values: {
           width: string | number;
@@ -421,7 +404,6 @@ export type Messages = {
         readonly showFrame: (values: { frame: string | number }) => string;
         readonly frameNumber: (values: { frame: string | number }) => string;
         readonly frameMs: (values: { frame: string | number }) => string;
-        readonly wear: string;
         readonly pause: string;
         readonly play: string;
         readonly previous: string;
@@ -452,6 +434,124 @@ export type Messages = {
         readonly bad_name: string;
         readonly gone: string;
         readonly server: string;
+      };
+      readonly wardrobe: {
+        readonly account: (values: { nick: string | number }) => string;
+        readonly byNick: string;
+        readonly tabsLabel: string;
+        readonly tabs: {
+          readonly skin: string;
+          readonly cape: string;
+          readonly set: string;
+        };
+        readonly sort: string;
+        readonly sorts: {
+          readonly worn: string;
+          readonly new: string;
+          readonly name: string;
+          readonly favourite: string;
+        };
+        readonly saveSet: string;
+        readonly setSaved: string;
+        readonly upload: {
+          readonly skin: string;
+          readonly cape: string;
+        };
+        readonly uploadHint: string;
+        readonly byFriend: string;
+        readonly unnamed: {
+          readonly skin: (values: { date: string | number }) => string;
+          readonly cape: (values: { date: string | number }) => string;
+          readonly set: (values: { date: string | number }) => string;
+        };
+        readonly wornTag: string;
+        readonly tryingTag: string;
+        readonly tryOn: (values: { name: string | number }) => string;
+        readonly favourite: string;
+        readonly actions: (values: { name: string | number }) => string;
+        readonly wear: string;
+        readonly rename: string;
+        readonly takeOff: string;
+        readonly remove: string;
+        readonly removeQuestion: (values: { name: string | number }) => string;
+        readonly removeYes: string;
+        readonly nameLabel: string;
+        readonly nameHint: string;
+        readonly save: string;
+        readonly slimArms: string;
+        readonly setOf: {
+          readonly both: string;
+          readonly skin: string;
+          readonly cape: string;
+        };
+        readonly wornNotKept: string;
+        readonly keepWorn: string;
+        readonly kept: string;
+        readonly renamed: string;
+        readonly removed: string;
+        readonly worn: string;
+        readonly empty: {
+          readonly skin: string;
+          readonly cape: string;
+          readonly set: string;
+        };
+        readonly uploadsLeft: (values: { left: number; total: number }) => string;
+        readonly uploadsReset: (values: { minutes: number }) => string;
+        readonly uploadsUnknown: string;
+        readonly wearFree: string;
+        readonly limits: (values: { skins: number; capes: number; sets: number }) => string;
+        readonly full: {
+          readonly skin: string;
+          readonly cape: string;
+          readonly set: string;
+        };
+        readonly retry: string;
+        readonly noPicture: string;
+        readonly trying: {
+          readonly label: string;
+          readonly skin: (values: { skin: string | number }) => string;
+          readonly cape: (values: { cape: string | number }) => string;
+          readonly both: (values: { skin: string | number; cape: string | number }) => string;
+          readonly set: (values: { name: string | number }) => string;
+          readonly text: string;
+          readonly noSkin: string;
+          readonly noCape: string;
+          readonly cancel: string;
+        };
+      };
+      readonly newSkin: {
+        readonly back: string;
+        readonly fromFile: (values: {
+          name: string | number;
+          width: string | number;
+          height: string | number;
+        }) => string;
+        readonly plainFile: (values: {
+          name: string | number;
+          width: string | number;
+          height: string | number;
+        }) => string;
+        readonly byNick: (values: { nick: string | number }) => string;
+        readonly checks: string;
+        readonly ownerArms: string;
+        readonly framesHint: string;
+        readonly serverCheck: string;
+        readonly keep: string;
+        readonly keepAndWear: string;
+        readonly wearOnly: string;
+        readonly fullNote: {
+          readonly skin: string;
+          readonly cape: string;
+        };
+        readonly wornNotSaved: string;
+        readonly ms: (values: { ms: number }) => string;
+      };
+      readonly byNick: {
+        readonly nick: string;
+        readonly nickHint: string;
+        readonly what: string;
+        readonly take: string;
+        readonly hint: string;
       };
     };
     readonly skinsWhere: string;

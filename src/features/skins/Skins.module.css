@@ -1,34 +1,22 @@
-/* The launcher account's skin and cape (D-065): the character on the left, what is
-   worn or the picked file on the right; one column in a narrow window. */
-.studio {
+/* The Skins tab (D-065, boards A-Wardrobe and A-SkinNew): the character on the left,
+   the wardrobe or the new file on the right; one column when the screen is narrow. */
+.wardrobeColumns,
+.newColumns {
   display: grid;
-  gap: var(--space-4);
-  margin-top: var(--space-3);
-}
-
-.studioHead {
-  display: grid;
-  gap: var(--space-1);
-}
-
-.columns {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-start;
   gap: var(--space-6);
+  align-items: start;
 }
 
-.side {
-  flex: 999 1 20rem;
-  min-width: 0;
-  display: grid;
-  gap: var(--space-3);
+@container screen (min-width: 40rem) {
+  .wardrobeColumns,
+  .newColumns {
+    grid-template-columns: minmax(14rem, 36%) minmax(0, 1fr);
+  }
 }
 
-.subtitle {
-  margin: 0;
+.label {
   font-size: var(--font-size-sm);
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .hint {
@@ -41,6 +29,16 @@
   margin: 0;
 }
 
+.visuallyHidden {
+  position: absolute;
+  inline-size: 1px;
+  block-size: 1px;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
 .signIn {
   display: grid;
   justify-items: start;
@@ -49,9 +47,9 @@
 
 /* The character. */
 .stage {
-  flex: 0 1 27.5rem;
   min-width: 0;
   display: grid;
+  align-content: start;
   gap: var(--space-3);
 }
 
@@ -61,48 +59,50 @@
   place-items: center;
   width: 100%;
   max-width: 27.5rem;
-  height: 32.5rem;
+  aspect-ratio: 440 / 520;
   overflow: hidden;
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
-  background:
-    radial-gradient(circle at 50% 35%, var(--color-accent-soft), transparent 60%),
-    var(--color-neutral-bg);
+  background: var(--color-neutral-bg);
 }
 
+/* Without 3D the pictures and their note set the height, so nothing is cut. */
+.view[data-flat] {
+  aspect-ratio: auto;
+}
+
+/* Scenes in flat bands (concept A has no gradients): sky, horizon, grass, soil. */
 .view[data-background='day'] {
   background: linear-gradient(
-    180deg,
-    var(--color-stage-day-sky) 0%,
-    var(--color-stage-day-haze) 74%,
-    var(--color-stage-day-grass) 74%,
-    var(--color-stage-day-soil) 100%
+    var(--color-stage-day-sky) 0 66%,
+    var(--color-stage-day-haze) 66% 74%,
+    var(--color-stage-day-grass) 74% 79%,
+    var(--color-stage-day-soil) 79%
   );
 }
 
 .view[data-background='night'] {
   background: linear-gradient(
-    180deg,
-    var(--color-stage-night-sky) 0%,
-    var(--color-stage-night-haze) 74%,
-    var(--color-stage-night-grass) 74%,
-    var(--color-stage-night-soil) 100%
+    var(--color-stage-night-sky) 0 66%,
+    var(--color-stage-night-haze) 66% 74%,
+    var(--color-stage-night-grass) 74% 79%,
+    var(--color-stage-night-soil) 79%
   );
 }
 
 .view[data-background='cave'] {
-  background: radial-gradient(
-    circle at 50% 38%,
-    var(--color-stage-cave-light) 0%,
-    var(--color-stage-cave-dark) 100%
+  background: linear-gradient(
+    var(--color-stage-cave-dark) 0 74%,
+    var(--color-stage-cave-light) 74%
   );
 }
 
+/* The 3D view draws at 440×520 and sets that size on the canvas itself; the column
+   it stands in may be narrower, so the picture is scaled to fit, never cropped. */
 .canvas {
   display: block;
-  width: 27.5rem;
-  max-width: 100%;
-  height: 32.5rem;
+  width: 100% !important;
+  height: 100% !important;
   cursor: grab;
   touch-action: none;
 }
@@ -131,37 +131,32 @@
   color: var(--color-accent-contrast);
 }
 
-/* Above the frame controls, clear of the nick over the head. */
+/* In a bottom corner, clear of the nick over the head; a quarter of a narrow view, so
+   it stays beside the character. */
 .before {
   position: absolute;
-  bottom: calc(var(--space-3) + 3rem);
+  bottom: var(--space-3);
   inset-inline-end: var(--space-3);
   margin: 0;
-  width: 120px;
+  width: clamp(3.5rem, 26%, 120px);
   border: 1px solid var(--color-border-strong);
   border-radius: var(--radius-md);
   background: var(--color-surface-raised);
   text-align: center;
 }
 
+/* skinview3d writes its own pixel size on the canvas; the figure's width wins. */
 .before canvas {
   display: block;
-  width: 120px;
-  height: 152px;
+  width: 100% !important;
+  height: auto !important;
+  aspect-ratio: 120 / 152;
 }
 
 .before figcaption {
   padding-bottom: var(--space-1);
   font-size: var(--font-size-xs);
   color: var(--color-text-muted);
-}
-
-.overlay {
-  position: absolute;
-  inset-inline: var(--space-3);
-  bottom: var(--space-3);
-  display: flex;
-  justify-content: center;
 }
 
 .flat {
@@ -223,33 +218,43 @@
   opacity: 0.55;
 }
 
+/* The track and knob of a switch, as the catalog's: off, a muted knob on a sunken
+   track; on, a light knob on the accent. */
 .track {
   position: relative;
-  width: 1.65rem;
-  height: 0.9rem;
+  flex: none;
+  width: 1.75rem;
+  height: 1rem;
+  border: 1px solid var(--color-border-strong);
   border-radius: var(--radius-pill);
-  background: var(--color-border-strong);
-  transition: background var(--motion-duration) ease-out;
+  background: var(--color-surface-sunken);
+  transition:
+    background-color var(--motion-duration) ease-out,
+    border-color var(--motion-duration) ease-out;
 }
 
 .track::after {
   content: '';
   position: absolute;
-  top: 2px;
-  inset-inline-start: 2px;
-  width: calc(0.9rem - 4px);
-  height: calc(0.9rem - 4px);
+  top: 1px;
+  inset-inline-start: 1px;
+  width: calc(1rem - 4px);
+  height: calc(1rem - 4px);
   border-radius: 50%;
-  background: var(--color-surface-solid);
-  transition: inset-inline-start var(--motion-duration) ease-out;
+  background: var(--color-text-muted);
+  transition:
+    inset-inline-start var(--motion-duration) ease-out,
+    background-color var(--motion-duration) ease-out;
 }
 
 .toggle[aria-checked='true'] .track {
+  border-color: var(--color-accent);
   background: var(--color-accent);
 }
 
 .toggle[aria-checked='true'] .track::after {
-  inset-inline-start: calc(100% - 0.9rem + 2px);
+  inset-inline-start: calc(100% - 1rem + 3px);
+  background: var(--color-accent-contrast);
 }
 
 .facts {
@@ -273,13 +278,6 @@
   font-weight: 600;
 }
 
-.factsLine {
-  margin: 0;
-  color: var(--color-text-muted);
-  font-family: var(--font-mono);
-  font-size: var(--font-size-xs);
-}
-
 .pictureRow {
   display: flex;
   flex-wrap: wrap;
@@ -289,41 +287,6 @@
 
 .pictureRow p {
   margin: 0;
-}
-
-/* What is worn, one card per kind; a file can be dropped on it. */
-.piece {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--space-4);
-  padding: var(--space-3);
-  border: 2px dashed var(--color-border);
-  border-radius: var(--radius-md);
-  background: var(--color-surface);
-  transition:
-    border-color var(--motion-duration) ease-out,
-    background var(--motion-duration) ease-out;
-}
-
-.piece[data-over='true'] {
-  border-color: var(--color-accent);
-  background: var(--color-accent-soft);
-}
-
-.pieceThumb {
-  display: grid;
-  place-items: center;
-  width: 6.5rem;
-  min-height: 8rem;
-  text-align: center;
-}
-
-.pieceBody {
-  flex: 1 1 14rem;
-  min-width: 0;
-  display: grid;
-  gap: var(--space-2);
 }
 
 .skinPreview,
@@ -348,19 +311,6 @@
 
 .capePreview.small {
   height: 4rem;
-}
-
-/* A picked file. */
-.newTexture {
-  display: grid;
-  gap: var(--space-4);
-}
-
-.newHead {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: var(--space-2);
 }
 
 .checks {
@@ -400,71 +350,539 @@
   color: var(--color-warning-text);
 }
 
-.framesBlock {
+/* ------------------------------------------------------------------ Wardrobe */
+
+.accountChip {
+  padding: var(--space-1) var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-pill);
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+}
+
+.closet {
+  min-width: 0;
   display: grid;
   gap: var(--space-3);
 }
 
-.framesHead {
+.closetHead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--space-2) var(--space-4);
+}
+
+/* The line under the tabs fills their row, whether the sort fits beside them or not. */
+.tabs {
+  flex: 1 1 auto;
+  display: flex;
+  flex-wrap: wrap;
+  border-block-end: 1px solid var(--color-border);
+}
+
+.tab {
+  display: inline-flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  min-height: 2.5rem;
+  margin-block-end: -1px;
+  padding: 0 var(--space-3);
+  border: 0;
+  border-block-end: 2px solid transparent;
+  background: none;
+  color: var(--color-text-muted);
+  font: inherit;
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.tab:hover {
+  color: var(--color-text);
+}
+
+.tab[aria-selected='true'] {
+  border-block-end-color: var(--color-accent);
+  color: var(--color-text);
+}
+
+.tabCount {
+  color: var(--color-text-muted);
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+
+.sort {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: var(--space-2) var(--space-3);
 }
 
-.sameToggle {
-  display: inline-flex;
+.closetTools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2) var(--space-4);
+}
+
+.backChoice {
+  display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: var(--space-2);
+}
+
+.saveSet {
   margin-inline-start: auto;
 }
 
-.sameMs {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--space-2) var(--space-3);
-}
-
-.sameMs input {
-  width: 7rem;
-}
-
-.frameGrid {
+.closetPanel {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(6.5rem, 1fr));
   gap: var(--space-2);
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(10rem, 1fr));
+  gap: var(--space-3);
   margin: 0;
   padding: 0;
   list-style: none;
 }
 
-.frameCell {
+/* A kept skin, cape or set. Pressing its picture tries it on. */
+.card {
+  position: relative;
   display: grid;
-  gap: var(--space-1);
+  align-content: start;
+  gap: var(--space-2);
   padding: var(--space-2);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
   background: var(--color-surface);
 }
 
-.frameCell[data-held='true'] {
+.card[data-trying] {
   border-color: var(--color-accent);
+  box-shadow: inset 0 0 0 1px var(--color-accent);
 }
 
-.frameThumb {
+.cardTry {
   display: grid;
-  place-items: center;
+  gap: var(--space-2);
+  min-width: 0;
   padding: 0;
   border: 0;
   border-radius: var(--radius-sm);
   background: none;
+  color: inherit;
+  font: inherit;
+  text-align: start;
+}
+
+button.cardTry {
   cursor: pointer;
 }
 
-.frameThumb .skinPreview,
-.frameThumb .capePreview {
+.cardPicture {
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  gap: var(--space-2);
+  aspect-ratio: 4 / 3;
+  padding: var(--space-2);
+  overflow: hidden;
+  border-radius: var(--radius-sm);
+  background: var(--color-neutral-bg);
+}
+
+.cardPicture .skinPreview,
+.cardPicture .capePreview {
+  height: 100%;
+  max-height: 7.5rem;
+  padding: 0;
   border: 0;
+  background: none;
+}
+
+.cardPicture .capePreview {
+  max-height: 4.5rem;
+}
+
+.setPicture {
+  display: contents;
+}
+
+.pictureWait {
+  align-self: center;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-xs);
+  text-align: center;
+}
+
+.cardName {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-2);
+  min-width: 0;
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+}
+
+.cardNameText {
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tryTag,
+.wornTag {
+  padding: 0 var(--space-2);
+  border-radius: var(--radius-pill);
+  background: var(--color-accent-soft);
+  color: var(--color-accent-text);
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  line-height: 1.5rem;
+}
+
+/* On the picture's start corner. */
+.wornTag {
+  position: absolute;
+  inset-block-start: calc(var(--space-2) * 2);
+  inset-inline-start: calc(var(--space-2) * 2);
+  pointer-events: none;
+}
+
+/* On the picture's end corner. */
+.star {
+  position: absolute;
+  inset-block-start: calc(var(--space-2) * 2);
+  inset-inline-end: calc(var(--space-2) * 2);
+  display: grid;
+  place-items: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  padding: 0;
+  border: 1px solid var(--color-border);
+  border-radius: 50%;
+  background: var(--color-surface-solid);
+  color: var(--color-text-muted);
+  cursor: pointer;
+}
+
+.star:hover {
+  color: var(--color-text);
+}
+
+.star[aria-pressed='true'] {
+  color: var(--color-warning-text);
+}
+
+.star[aria-pressed='true'] svg {
+  fill: currentColor;
+}
+
+.cardFoot {
+  position: relative;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 1.75rem;
+}
+
+/* Room for the ⋯ menu, on cards that have one. */
+.withMenu {
+  padding-inline-end: 2rem;
+}
+
+/* The ⋯ menu at the foot's end, beside the facts however many lines they take. */
+.cardMenu {
+  position: absolute;
+  inset-block-start: 0;
+  inset-inline-end: 0;
+}
+
+.cardChips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.cardChips li {
+  padding: 0 var(--space-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-pill);
+  color: var(--color-text-muted);
+  font-size: var(--font-size-xs);
+  line-height: 1.375rem;
+}
+
+.menuButton {
+  display: grid;
+  place-items: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: none;
+  color: var(--color-text-muted);
+  cursor: pointer;
+}
+
+.menuButton:hover,
+.menuButton[aria-expanded='true'] {
+  background: var(--color-hover);
+  color: var(--color-text);
+}
+
+/* The menu's name is its tooltip and accessible name; only the icon shows. */
+.menuButton > span {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.cardConfirm,
+.cardRename {
+  display: grid;
+  gap: var(--space-2);
+  padding-block-start: var(--space-2);
+  border-block-start: 1px solid var(--color-border);
+}
+
+.cardConfirm p {
+  margin: 0;
+  font-size: var(--font-size-sm);
+}
+
+.cardRenameLabel {
+  display: grid;
+  gap: var(--space-1);
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
+}
+
+/* The first card: a file from the dialog or dropped here, or one by nick. */
+.uploadCard {
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  gap: var(--space-2);
+  min-height: 12rem;
+  padding: var(--space-3);
+  border: 2px dashed var(--color-border-strong);
+  border-radius: var(--radius-md);
+  text-align: center;
+  transition:
+    border-color var(--motion-duration) ease-out,
+    background var(--motion-duration) ease-out;
+}
+
+.uploadCard[data-over='true'] {
+  border-color: var(--color-accent);
+  background: var(--color-accent-soft);
+}
+
+.uploadButton {
+  display: grid;
+  justify-items: center;
+  gap: var(--space-1);
+  padding: var(--space-2);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.uploadButton:hover {
+  background: var(--color-hover);
+}
+
+.uploadButton[aria-disabled='true'] {
+  cursor: progress;
+}
+
+.uploadTitle {
+  font-weight: 700;
+}
+
+/* A link-looking button: always underlined, so it is not told apart by color only. */
+.link {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--color-accent-text);
+  font: inherit;
+  font-size: var(--font-size-sm);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+
+/* What is tried on, to wear or not. */
+.tryBar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3) var(--space-4);
+  padding: var(--space-4);
+  border: 1px solid var(--color-accent);
+  border-radius: var(--radius-md);
+  background: var(--color-accent-soft);
+}
+
+.tryText {
+  flex: 1 1 18rem;
+  display: grid;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.tryTitle {
+  margin: 0;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+.tryActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+/* Another player's skin by nick. */
+.byNick {
+  display: grid;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+}
+
+.byNickRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: var(--space-3) var(--space-6);
+}
+
+.byNickKind {
+  display: grid;
+  gap: var(--space-1);
+}
+
+/* ------------------------------------------------------------------- New skin */
+
+.back {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  min-block-size: 2rem;
+  margin-inline-start: calc(-1 * var(--space-2));
+  padding: 0 var(--space-2);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--color-accent-text);
+  font: inherit;
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color var(--motion-duration) ease-out;
+}
+
+.back:hover {
+  background: var(--color-hover);
+}
+
+.mirror {
+  flex: none;
+}
+
+:global([dir='rtl']) .mirror {
+  transform: scaleX(-1);
+}
+
+.source {
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+  overflow-wrap: anywhere;
+}
+
+.newForm {
+  min-width: 0;
+  display: grid;
+  gap: var(--space-3);
+}
+
+.box {
+  display: grid;
+  gap: var(--space-4);
+  padding: var(--space-4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+}
+
+.boxTitle {
+  margin: 0;
+  font-size: var(--font-size-md);
+  font-weight: 700;
+}
+
+.formRow {
+  display: grid;
+  justify-items: start;
+  gap: var(--space-2);
+}
+
+.framesBlock {
+  display: grid;
+  justify-items: start;
+  gap: var(--space-3);
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.framesLegend {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-2) var(--space-3);
+  padding: 0;
+}
+
+.frameGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(5rem, 1fr));
+  gap: var(--space-2);
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  list-style: none;
 }
 
 .frameMs {
@@ -476,35 +894,126 @@
 
 .frameMs input {
   width: 100%;
+  min-width: 5rem;
   padding: var(--space-1) var(--space-2);
 }
 
 .bad {
-  font-size: var(--font-size-xs);
+  margin: 0;
+  font-size: var(--font-size-sm);
   color: var(--color-danger-text);
+}
+
+.newActions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--space-2);
+}
+
+/* The frames under the character. */
+.frameStrip {
+  display: grid;
+  gap: var(--space-2);
 }
 
 .frameControls {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  justify-content: center;
   gap: var(--space-2);
 }
 
-.frameControls .chip {
-  background: var(--color-surface-raised);
+.frameLabel {
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
 }
 
-.frameLabel {
-  padding: var(--space-1) var(--space-3);
-  border-radius: var(--radius-pill);
-  background: var(--color-surface-raised);
+.frameThumbs {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(3.25rem, 1fr));
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.frameThumbs li {
+  display: grid;
+  justify-items: center;
+  gap: 2px;
+}
+
+.frameThumb {
+  display: grid;
+  place-items: center;
+  padding: 2px;
+  border: 2px solid transparent;
+  border-radius: var(--radius-sm);
+  background: none;
+  cursor: pointer;
+}
+
+.frameThumb[aria-pressed='true'] {
+  border-color: var(--color-accent);
+}
+
+.frameThumbs .skinPreview,
+.frameThumbs .capePreview {
+  height: 3.5rem;
+  padding: 0;
+  border: 0;
+  background: none;
+}
+
+.frameThumbs .capePreview {
+  height: 2.25rem;
+}
+
+.frameThumbMs {
+  color: var(--color-text-muted);
   font-size: var(--font-size-xs);
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+  overflow-wrap: anywhere;
+}
+
+@media (forced-colors: active) {
+  .tab[aria-selected='true'],
+  .card[data-trying],
+  .chip[aria-pressed='true'],
+  .frameThumb[aria-pressed='true'] {
+    border-color: Highlight;
+  }
+
+  .link {
+    color: LinkText;
+  }
+
+  /* Backgrounds are dropped here: the switch draws its track and knob in system colors. */
+  .track {
+    forced-color-adjust: none;
+    border-color: CanvasText;
+    background: Canvas;
+  }
+
+  .track::after {
+    background: CanvasText;
+  }
+
+  .toggle[aria-checked='true'] .track {
+    border-color: Highlight;
+    background: Highlight;
+  }
+
+  .toggle[aria-checked='true'] .track::after {
+    background: HighlightText;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .piece,
+  .uploadCard,
+  .back,
   .track,
   .track::after {
     transition: none;

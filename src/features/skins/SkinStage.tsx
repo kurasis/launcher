@@ -4,6 +4,7 @@ import { ipc, skinsProblem } from '../../lib/ipc';
 import type { SkinsProblem } from '../../lib/contracts';
 import { strings } from '../../lib/strings';
 import { SkinPreview } from './SkinPreview';
+import { Toggle } from './Toggle';
 import styles from './Skins.module.css';
 import {
   BODY_ANIMATIONS,
@@ -127,34 +128,6 @@ function Chips<T extends string>({
   );
 }
 
-function Toggle({
-  label,
-  on,
-  disabled,
-  onChange,
-}: {
-  label: string;
-  on: boolean;
-  disabled?: boolean;
-  onChange: (on: boolean) => void;
-}) {
-  return (
-    <button
-      type="button"
-      role="switch"
-      aria-checked={on}
-      className={styles.toggle}
-      disabled={disabled}
-      onClick={() => {
-        onChange(!on);
-      }}
-    >
-      <span className={styles.track} aria-hidden="true" />
-      {label}
-    </button>
-  );
-}
-
 /** A character on a canvas, made when the canvas is there; null while it is made,
  * and `failed` when WebGL does not start. */
 function useStage(
@@ -198,13 +171,18 @@ interface Props {
   nick: string | null;
   /** A frame held still by the frame editor, or null. */
   frame: number | null;
-  /** Shown over the bottom of the character (the frame editor's buttons). */
-  overlay?: ReactNode;
+  /** What a cape is worn as, when the screen chooses it elsewhere; otherwise the
+   * stage offers the choice itself while a cape shows. */
+  back?: Back | undefined;
+  /** Right under the character (the strip of frames). */
+  below?: ReactNode;
 }
+
+export type Back = 'cape' | 'elytra';
 
 /** The character and how it is shown (D-065): pose, angle, background, layers,
  * before and after, how players without the mod see it, a picture of it. */
-export function SkinStage({ worn, trial, nick, frame, overlay }: Props) {
+export function SkinStage({ worn, trial, nick, frame, back: chosenBack, below }: Props) {
   const s = strings.accounts.skins;
   const [animation, setAnimation] = useState<BodyAnimation>('idle');
   const [view, setView] = useState<ViewAngle | null>('spin');
@@ -213,7 +191,8 @@ export function SkinStage({ worn, trial, nick, frame, overlay }: Props) {
   const [nameTag, setNameTag] = useState(false);
   const [compare, setCompare] = useState(true);
   const [noMod, setNoMod] = useState(false);
-  const [back, setBack] = useState<'cape' | 'elytra'>('cape');
+  const [ownBack, setBack] = useState<Back>('cape');
+  const back = chosenBack ?? ownBack;
   const [canvas, setCanvas] = useState<HTMLCanvasElement | null>(null);
   const [beforeCanvas, setBeforeCanvas] = useState<HTMLCanvasElement | null>(null);
   const [lost, setLost] = useState(false);
@@ -310,7 +289,7 @@ export function SkinStage({ worn, trial, nick, frame, overlay }: Props) {
       <span className={styles.stageTag} data-trying={trial !== null && !noMod}>
         {tag}
       </span>
-      <div className={styles.view} data-background={background}>
+      <div className={styles.view} data-background={background} data-flat={flat || undefined}>
         {flat ? (
           <div className={styles.flat}>
             {shown.skin !== null ? (
@@ -362,8 +341,8 @@ export function SkinStage({ worn, trial, nick, frame, overlay }: Props) {
             <figcaption>{s.before}</figcaption>
           </figure>
         )}
-        {overlay !== undefined && <div className={styles.overlay}>{overlay}</div>}
       </div>
+      {below}
 
       <Chips
         label={s.animations.label}
@@ -394,7 +373,7 @@ export function SkinStage({ worn, trial, nick, frame, overlay }: Props) {
         <Toggle label={s.compare} on={compare} onChange={setCompare} />
         <Toggle label={s.noMod} on={noMod} onChange={setNoMod} />
       </div>
-      {showsCape && (
+      {showsCape && chosenBack === undefined && (
         <Chips
           label={s.backLabel}
           items={['cape', 'elytra'] as const}
