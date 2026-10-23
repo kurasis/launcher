@@ -80,3 +80,22 @@
     white-space: nowrap;
   }
 }
+
+/* About: the notes of a version, a list that scrolls when long. */
+.notesBox {
+  max-block-size: 12rem;
+  overflow: auto;
+  overflow-wrap: anywhere;
+  font-size: var(--font-size-sm);
+}
+
+.noteList {
+  display: grid;
+  gap: var(--space-1);
+  margin: 0;
+  padding-inline-start: var(--space-6);
+}
+
+.wide {
+  inline-size: 100%;
+}

@@ -14,13 +14,14 @@ export function Fact({
 }: {
   term: ReactNode;
   children: ReactNode;
-  /** The value's direction, such as `ltr` for a path or a version. */
+  /** The value's direction, such as `ltr` for a path or a version. It sits where the
+   * page's direction puts values; only its own text runs that way. */
   dir?: 'ltr' | 'auto';
 }) {
   return (
     <div className={styles.fact}>
       <dt>{term}</dt>
-      <dd dir={dir}>{children}</dd>
+      <dd>{dir === undefined ? children : <bdi dir={dir}>{children}</bdi>}</dd>
     </div>
   );
 }

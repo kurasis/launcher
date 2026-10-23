@@ -1422,7 +1422,12 @@
       "stopWarning": "Остановка сразу закрывает Minecraft. Всё несохранённое в текущем мире пропадёт. Чтобы сохраниться, выйдите через меню игры.",
       "stopConfirm": "Остановить без сохранения",
       "keepPlaying": "Продолжить игру",
-      "loggingDegraded": "Журнал вывода не удалось записать на диск; последние строки всё равно показаны здесь."
+      "loggingDegraded": "Журнал вывода не удалось записать на диск; последние строки всё равно показаны здесь.",
+      "what": "Что",
+      "whatInstance": "{kind}, «{name}»",
+      "stateLabel": "Состояние",
+      "minutesSeconds": "{minutes, number} мин {seconds, number} с",
+      "none": "С запуска лаунчера игра ещё не запускалась."
     },
     "harness": {
       "title": "Тест жизненного цикла (только сборка для разработки)",
@@ -1498,7 +1503,8 @@
         "operation": "Операция",
         "installation": "Установка",
         "result": "Результат",
-        "transferred": "Загружено"
+        "transferred": "Загружено",
+        "when": "Когда"
       },
       "none": "Операций пока не было.",
       "kind": {
@@ -1520,7 +1526,10 @@
       "exportExcluded": "Никогда не включаются: записи аккаунта, токены входа, файлы аргументов запуска, миры, скриншоты, настройки и другие файлы из папок игры.",
       "exportButton": "Экспорт…",
       "exported": "Сохранено: {name}. Проверьте файл перед отправкой.",
-      "exportCancelled": "Экспорт отменён."
+      "exportCancelled": "Экспорт отменён.",
+      "running": "Выполняется",
+      "now": "сейчас",
+      "dayTime": "{day}, {time}"
     },
     "about": {
       "title": "О программе",
@@ -1529,7 +1538,8 @@
       "officialTitle": "Официальная информация о Minecraft",
       "eula": "Лицензия Minecraft (EULA)",
       "help": "Справка Minecraft",
-      "fonts": "Шрифты: Golos Text и Noto Sans Arabic, лицензия SIL Open Font License 1.1"
+      "fonts": "Шрифты: Golos Text и Noto Sans Arabic, лицензия SIL Open Font License 1.1",
+      "versionLine": "Версия {version}, {profile, select, debug {отладочная сборка} other {релизная сборка}}"
     },
     "foundation": {
       "body": "Установка, восстановление и запуск реализованы. Без учётной записи Microsoft игра запускается как демоверсия Minecraft — под профилем без аккаунта или аккаунтом лаунчера."
@@ -1553,7 +1563,8 @@
       "buildProfile": {
         "debug": "Отладочная",
         "release": "Релизная"
-      }
+      },
+      "memory": "Память"
     },
     "errorCodes": {
       "AUTH_CANCELLED": "Вход отменён.",

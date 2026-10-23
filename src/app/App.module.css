@@ -203,12 +203,6 @@
   text-align: center;
 }
 
-.linkRow {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-3);
-}
-
 .textButton {
   padding: 0;
   border: 0;
@@ -338,23 +332,6 @@
   height: 1px;
   margin: var(--space-1) var(--space-2);
   background: var(--color-border);
-}
-
-.fontLicenses summary {
-  cursor: pointer;
-  color: var(--color-text-2);
-}
-
-.licenseText {
-  max-height: 16rem;
-  overflow: auto;
-  margin: var(--space-2) 0 0;
-  padding: var(--space-3);
-  border-radius: var(--radius-sm);
-  background: var(--color-surface-sunken);
-  font-family: var(--font-mono);
-  font-size: var(--font-size-xs);
-  white-space: pre-wrap;
 }
 
 /* The icon-only rail of a narrow window: names stay for screen readers and tooltips. */

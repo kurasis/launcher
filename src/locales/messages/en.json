@@ -1422,7 +1422,12 @@
       "stopWarning": "Stopping ends Minecraft immediately. Anything not saved in the current world is lost. Quit from the game menu to save.",
       "stopConfirm": "Stop without saving",
       "keepPlaying": "Keep playing",
-      "loggingDegraded": "The output log could not be written to disk; the last lines are still shown here."
+      "loggingDegraded": "The output log could not be written to disk; the last lines are still shown here.",
+      "what": "What",
+      "whatInstance": "{kind}, “{name}”",
+      "stateLabel": "State",
+      "minutesSeconds": "{minutes, number} min {seconds, number} s",
+      "none": "No game has run since the launcher started."
     },
     "harness": {
       "title": "Lifecycle test (debug build only)",
@@ -1498,7 +1503,8 @@
         "operation": "Operation",
         "installation": "Installation",
         "result": "Result",
-        "transferred": "Downloaded"
+        "transferred": "Downloaded",
+        "when": "When"
       },
       "none": "No operations yet.",
       "kind": {
@@ -1520,7 +1526,10 @@
       "exportExcluded": "Never included: account records, sign-in tokens, launch argument files, worlds, screenshots, options or other files from game folders.",
       "exportButton": "Export…",
       "exported": "Saved {name}. Review it before sharing.",
-      "exportCancelled": "Export cancelled."
+      "exportCancelled": "Export cancelled.",
+      "running": "In progress",
+      "now": "now",
+      "dayTime": "{day}, {time}"
     },
     "about": {
       "title": "About",
@@ -1529,7 +1538,8 @@
       "officialTitle": "Official Minecraft information",
       "eula": "Minecraft EULA",
       "help": "Minecraft Help",
-      "fonts": "Fonts: Golos Text and Noto Sans Arabic, under the SIL Open Font License 1.1"
+      "fonts": "Fonts: Golos Text and Noto Sans Arabic, under the SIL Open Font License 1.1",
+      "versionLine": "Version {version}, {profile, select, debug {debug build} other {release build}}"
     },
     "foundation": {
       "body": "Installing, repairing and launching are implemented. Without a Microsoft account the game starts as Minecraft's demo, under a profile without an account or the launcher account."
@@ -1553,7 +1563,8 @@
       "buildProfile": {
         "debug": "Debug",
         "release": "Release"
-      }
+      },
+      "memory": "Memory"
     },
     "errorCodes": {
       "AUTH_CANCELLED": "Sign-in was cancelled.",

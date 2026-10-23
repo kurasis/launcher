@@ -1516,6 +1516,11 @@ export type Messages = {
     readonly stopConfirm: string;
     readonly keepPlaying: string;
     readonly loggingDegraded: string;
+    readonly what: string;
+    readonly whatInstance: (values: { kind: string | number; name: string | number }) => string;
+    readonly stateLabel: string;
+    readonly minutesSeconds: (values: { minutes: number; seconds: number }) => string;
+    readonly none: string;
   };
   readonly harness: {
     readonly title: string;
@@ -1592,6 +1597,7 @@ export type Messages = {
       readonly installation: string;
       readonly result: string;
       readonly transferred: string;
+      readonly when: string;
     };
     readonly none: string;
     readonly kind: {
@@ -1614,6 +1620,9 @@ export type Messages = {
     readonly exportButton: string;
     readonly exported: (values: { name: string | number }) => string;
     readonly exportCancelled: string;
+    readonly running: string;
+    readonly now: string;
+    readonly dayTime: (values: { day: string | number; time: string | number }) => string;
   };
   readonly about: {
     readonly title: string;
@@ -1623,6 +1632,7 @@ export type Messages = {
     readonly eula: string;
     readonly help: string;
     readonly fonts: string;
+    readonly versionLine: (values: { version: string | number; profile: string }) => string;
   };
   readonly foundation: {
     readonly body: string;
@@ -1647,6 +1657,7 @@ export type Messages = {
       readonly debug: string;
       readonly release: string;
     };
+    readonly memory: string;
   };
   readonly errorCodes: {
     readonly AUTH_CANCELLED: string;

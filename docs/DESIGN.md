@@ -84,6 +84,8 @@ figures.
 - **Questions in place** (`Confirm`) take the focus and give it back to what opened them.
   The answer that deletes or stops is danger, one that only does something big (copies the
   data) primary.
+- **States** in a table or a fact are words after a small dot in their tone (`StateDot`),
+  not a pill; name and value pairs are `Facts`.
 - **Avatars** are the 8 × 8 face of the skin with its hat layer (`SkinHead`), pixelated,
   20 % rounded. Without a skin, the default face.
 - **Icons** come from `Icon`; add a new one there in the same 24 px stroke style.

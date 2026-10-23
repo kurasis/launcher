@@ -13,6 +13,9 @@ interface PanelProps {
   aside?: ReactNode;
   /** The aside follows the heading instead of sitting at the far end. */
   asideAtTitle?: boolean;
+  /** One action for the whole panel, at its end beside the heading and the text (Open
+   * console); it goes under them when there is no room. */
+  action?: ReactNode;
   children: ReactNode;
 }
 
@@ -23,6 +26,7 @@ export function Panel({
   headingId,
   aside,
   asideAtTitle = false,
+  action,
   children,
 }: PanelProps) {
   const ownId = useId();
@@ -35,8 +39,8 @@ export function Panel({
     );
   }
   const Heading = `h${String(level)}` as 'h2' | 'h3' | 'h4';
-  return (
-    <section className={styles.panel} aria-labelledby={id}>
+  const content = (
+    <>
       <header className={[styles.header, asideAtTitle && styles.atTitle].filter(Boolean).join(' ')}>
         <Heading id={id} className={styles.title}>
           {title}
@@ -44,6 +48,19 @@ export function Panel({
         {aside}
       </header>
       <div className={styles.body}>{children}</div>
+    </>
+  );
+  if (action !== undefined) {
+    return (
+      <section className={[styles.panel, styles.withAction].join(' ')} aria-labelledby={id}>
+        <div className={styles.main}>{content}</div>
+        <div className={styles.action}>{action}</div>
+      </section>
+    );
+  }
+  return (
+    <section className={styles.panel} aria-labelledby={id}>
+      {content}
     </section>
   );
 }

@@ -51,6 +51,38 @@ describe('RunStatus', () => {
     expect(onStop).toHaveBeenCalledWith('run-1');
   });
 
+  it('asks in place and gives the focus back to Stop game', () => {
+    const onStop = vi.fn();
+    render(
+      <RunStatus
+        current={{ ...base, kind: 'game', instanceId: 'i-1' }}
+        last={null}
+        names={new Map([['i-1', 'Survival']])}
+        onStop={onStop}
+      />,
+    );
+    const region = screen.getByRole('region', { name: /Running: Minecraft/ });
+    expect(region).toHaveTextContent('Minecraft, “Survival”');
+    const stop = screen.getByRole('button', { name: 'Stop game' });
+    stop.focus();
+    fireEvent.click(stop);
+    const question = screen.getByRole('alertdialog', { name: 'Stop game' });
+    expect(question).toHaveFocus();
+    fireEvent.keyDown(question, { key: 'Escape' });
+    expect(onStop).not.toHaveBeenCalled();
+    expect(screen.getByRole('button', { name: 'Stop game' })).toHaveFocus();
+  });
+
+  it('keeps the output folded unless asked to show it', () => {
+    const last: RunSummary = { ...base, state: 'exited', durationMs: 61_400, outputTail: ['x'] };
+    const { rerender } = render(<RunStatus current={null} last={last} />);
+    expect(screen.getByText('1 min 1 s')).toBeVisible();
+    expect(screen.getByText('x').closest('details')).not.toBeNull();
+    rerender(<RunStatus current={null} last={last} level={3} output="shown" />);
+    expect(screen.getByRole('heading', { level: 3, name: 'Last run' })).toBeVisible();
+    expect(screen.getByRole('region', { name: 'Last output lines' })).toHaveTextContent('x');
+  });
+
   it('labels a run that failed before starting', () => {
     render(<RunStatus current={null} last={{ ...base, kind: 'game', state: 'failed' }} />);
     expect(screen.getByText('Not started')).toBeVisible();

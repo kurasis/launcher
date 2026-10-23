@@ -1,0 +1,91 @@
+/* Diagnostics in concept A: two columns, the wider one first, while there is room. */
+.columns {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-6);
+  align-items: start;
+}
+
+@container screen (min-width: 60rem) {
+  .columns {
+    grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr);
+  }
+}
+
+.column {
+  display: grid;
+  gap: var(--space-6);
+  min-inline-size: 0;
+}
+
+.hint {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+/* Recent operations: quiet rules between rows; words wrap between them, sizes do not. A
+   language with longer words scrolls the table sideways instead of breaking them. */
+.tableBox {
+  overflow-x: auto;
+}
+
+.table {
+  inline-size: 100%;
+  border-collapse: collapse;
+  font-size: var(--font-size-sm);
+  font-variant-numeric: tabular-nums;
+}
+
+.table th {
+  padding: var(--space-2) var(--space-2);
+  border-block-end: 1px solid var(--color-border);
+  color: var(--color-text-muted);
+  font-weight: 500;
+  text-align: start;
+}
+
+.table td {
+  padding: 0.5625rem var(--space-2);
+  border-block-end: 1px solid var(--color-border-soft);
+  text-align: start;
+  vertical-align: top;
+  overflow-wrap: break-word;
+}
+
+.table th:first-child,
+.table td:first-child {
+  padding-inline-start: 0;
+}
+
+.table th:last-child,
+.table td:last-child {
+  padding-inline-end: 0;
+}
+
+.table tbody tr:last-child td {
+  border-block-end: 0;
+}
+
+.size {
+  white-space: nowrap;
+}
+
+.when {
+  color: var(--color-text-muted);
+}
+
+/* What went wrong, under the result. */
+.error {
+  display: block;
+  margin-block-start: 2px;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-xs);
+}

@@ -1423,7 +1423,12 @@
       "stopWarning": "يُنهي الإيقاف Minecraft فورًا، وسيضيع كل ما لم يُحفظ في العالم الحالي. اخرج من قائمة اللعبة للحفظ.",
       "stopConfirm": "إيقاف دون حفظ",
       "keepPlaying": "متابعة اللعب",
-      "loggingDegraded": "تعذّرت كتابة سجل المخرجات على القرص؛ ولا تزال الأسطر الأخيرة معروضة هنا."
+      "loggingDegraded": "تعذّرت كتابة سجل المخرجات على القرص؛ ولا تزال الأسطر الأخيرة معروضة هنا.",
+      "what": "ما شُغِّل",
+      "whatInstance": "{kind}، «{name}»",
+      "stateLabel": "الحالة",
+      "minutesSeconds": "{minutes, number} د {seconds, number} ث",
+      "none": "لم تُشغَّل أي لعبة منذ بدء المشغّل."
     },
     "harness": {
       "title": "اختبار دورة الحياة (إصدار التطوير فقط)",
@@ -1499,7 +1504,8 @@
         "operation": "العملية",
         "installation": "التثبيت",
         "result": "النتيجة",
-        "transferred": "المُنزَّل"
+        "transferred": "المُنزَّل",
+        "when": "متى"
       },
       "none": "لا توجد عمليات بعد.",
       "kind": {
@@ -1521,7 +1527,10 @@
       "exportExcluded": "لا يُضمَّن أبدًا: سجلات الحساب، ورموز تسجيل الدخول، وملفات وسائط التشغيل، والعوالم، ولقطات الشاشة، والإعدادات، وأي ملفات أخرى من مجلدات اللعبة.",
       "exportButton": "تصدير…",
       "exported": "حُفظ {name}. راجعه قبل مشاركته.",
-      "exportCancelled": "أُلغي التصدير."
+      "exportCancelled": "أُلغي التصدير.",
+      "running": "قيد التنفيذ",
+      "now": "الآن",
+      "dayTime": "{day}، {time}"
     },
     "about": {
       "title": "حول",
@@ -1530,7 +1539,8 @@
       "officialTitle": "معلومات Minecraft الرسمية",
       "eula": "اتفاقية ترخيص Minecraft",
       "help": "مساعدة Minecraft",
-      "fonts": "الخطوط: Golos Text وNoto Sans Arabic، بموجب رخصة SIL Open Font License 1.1"
+      "fonts": "الخطوط: Golos Text وNoto Sans Arabic، بموجب رخصة SIL Open Font License 1.1",
+      "versionLine": "الإصدار {version}، {profile, select, debug {إصدار للتطوير} other {إصدار نهائي}}"
     },
     "foundation": {
       "body": "التثبيت والإصلاح والتشغيل منجزة. من دون حساب Microsoft تبدأ اللعبة كنسخة Minecraft التجريبية، باسم ملف شخصي بلا حساب أو بحساب المشغّل."
@@ -1554,7 +1564,8 @@
       "buildProfile": {
         "debug": "تطوير",
         "release": "نهائي"
-      }
+      },
+      "memory": "الذاكرة"
     },
     "errorCodes": {
       "AUTH_CANCELLED": "أُلغي تسجيل الدخول.",

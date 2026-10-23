@@ -1,0 +1,92 @@
+/* About in concept A: two columns while there is room for both. */
+.columns {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-6);
+  align-items: start;
+  max-inline-size: 65rem;
+}
+
+@container screen (min-width: 46rem) {
+  .columns {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+.column {
+  display: grid;
+  gap: var(--space-6);
+  min-inline-size: 0;
+}
+
+/* The launcher's own panel (the panel look): its name is its heading, beside the mark. */
+.about {
+  display: grid;
+  gap: var(--space-3);
+  font-size: var(--font-size-sm);
+}
+
+.about p {
+  margin: 0;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.logo {
+  inline-size: 2.5rem;
+  block-size: 2.5rem;
+}
+
+.name {
+  display: grid;
+  gap: 2px;
+  min-inline-size: 0;
+}
+
+.title {
+  margin: 0;
+  font-size: var(--font-size-lg);
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.hint {
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: var(--space-2);
+}
+
+/* A link button with what went wrong under it. */
+.link {
+  display: grid;
+  gap: var(--space-2);
+  justify-items: start;
+}
+
+.fonts summary {
+  cursor: pointer;
+  color: var(--color-text-2);
+}
+
+.licenseText {
+  max-block-size: 16rem;
+  overflow: auto;
+  margin: var(--space-2) 0 0;
+  padding: var(--space-3);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-sunken);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-xs);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}

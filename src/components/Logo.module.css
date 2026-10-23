@@ -23,3 +23,22 @@
   fill: #ffffff;
   opacity: 0.25;
 }
+
+/* On a panel: the block in the accent of the theme. */
+.surface .top,
+.surface .left,
+.surface .right {
+  fill: var(--color-accent);
+}
+
+@media (forced-colors: active) {
+  .top,
+  .left,
+  .right {
+    fill: CanvasText;
+  }
+
+  .shine {
+    fill: Canvas;
+  }
+}
