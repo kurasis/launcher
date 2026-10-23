@@ -1,26 +1,35 @@
-import { useEffect, useId, useRef } from 'react';
-import { Button } from '../../components/Button';
-import { strings } from '../../lib/strings';
-import styles from './Friends.module.css';
+import { useEffect, useId, useRef, type ReactNode } from 'react';
+import { Button } from './Button';
+import styles from './Confirm.module.css';
 
 /**
  * "Block Notch_1? They will not be told." in place, under what it is about: the focus
  * moves to it, Escape or Cancel closes it (and only it), and the answer is pressed.
- * While the answer goes, neither closes it: what was pressed is under way.
+ * While the answer goes, neither closes it: what was pressed is under way. The answer
+ * that deletes or stops is drawn as danger; one that only does something big (copies
+ * the data) as primary.
  */
 export function Confirm({
   label,
   text,
+  children,
   action,
+  actionVariant = 'danger',
+  cancel,
   pending,
   onYes,
   onNo,
 }: {
   /** The name of the question for screen readers, such as the friend's nick. */
   label: string;
-  text: string;
+  /** The question; or `children` for a longer one (a list of what goes). */
+  text?: string;
+  children?: ReactNode;
   /** The button that does it, such as "Block". */
   action: string;
+  actionVariant?: 'danger' | 'primary';
+  /** The button that closes it. */
+  cancel: string;
   pending: boolean;
   onYes: () => void;
   onNo: () => void;
@@ -40,17 +49,23 @@ export function Confirm({
       tabIndex={-1}
       onKeyDown={(event) => {
         if (event.key === 'Escape') {
-          // Closes the question, not the whole sheet.
+          // Closes the question, not what it sits in (a sheet).
           event.preventDefault();
           event.stopPropagation();
           if (!pending) onNo();
         }
       }}
     >
-      <p id={textId}>{text}</p>
-      <div className={styles.inline}>
+      {text === undefined ? (
+        <div id={textId} className={styles.text}>
+          {children}
+        </div>
+      ) : (
+        <p id={textId}>{text}</p>
+      )}
+      <div className={styles.actions}>
         <Button
-          variant="danger"
+          variant={actionVariant}
           size="small"
           aria-disabled={pending || undefined}
           onClick={() => {
@@ -66,7 +81,7 @@ export function Confirm({
             if (!pending) onNo();
           }}
         >
-          {strings.friends.cancel}
+          {cancel}
         </Button>
       </div>
     </div>

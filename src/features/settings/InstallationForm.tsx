@@ -62,6 +62,8 @@ export function InstallationForm({ instance, memory }: InstallationFormProps) {
   const recommendation = useRecommendation({ instanceId: instance.id });
 
   const submit = async () => {
+    // Saving keeps the fields and Save as they are (a disabled control drops the focus).
+    if (save.pending) return;
     setSaved(false);
     const result = await save.run(
       toInt(heap),
@@ -100,7 +102,7 @@ export function InstallationForm({ instance, memory }: InstallationFormProps) {
         {(props) => (
           <input
             {...props}
-            className={forms.input}
+            className={[forms.input, styles.narrow].join(' ')}
             type="number"
             inputMode="numeric"
             min={policy?.minHeapMib}
@@ -116,10 +118,11 @@ export function InstallationForm({ instance, memory }: InstallationFormProps) {
         )}
       </Field>
       {recommendation !== null && (
-        <div className={forms.actions}>
+        <div className={styles.actions}>
           <span className={styles.hint}>{recommendationText(recommendation)}</span>
           {String(recommendation.mib) !== heap && (
             <Button
+              size="small"
               disabled={instance.busy}
               onClick={() => {
                 setHeap(String(recommendation.mib));
@@ -131,12 +134,12 @@ export function InstallationForm({ instance, memory }: InstallationFormProps) {
           )}
         </div>
       )}
-      <div className={forms.row}>
+      <div className={styles.row}>
         <Field label={t.width}>
           {(props) => (
             <input
               {...props}
-              className={forms.input}
+              className={[forms.input, styles.narrow].join(' ')}
               type="number"
               inputMode="numeric"
               min={bounds.minWidth}
@@ -154,7 +157,7 @@ export function InstallationForm({ instance, memory }: InstallationFormProps) {
           {(props) => (
             <input
               {...props}
-              className={forms.input}
+              className={[forms.input, styles.narrow].join(' ')}
               type="number"
               inputMode="numeric"
               min={bounds.minHeight}
@@ -222,11 +225,21 @@ export function InstallationForm({ instance, memory }: InstallationFormProps) {
         )}
       </Field>
       {save.error !== null && <Notice tone="danger">{save.error}</Notice>}
-      <div className={forms.actions}>
-        <Button variant="primary" type="submit" disabled={save.pending || instance.busy}>
+      <div className={styles.actions}>
+        <Button
+          variant="primary"
+          size="small"
+          type="submit"
+          disabled={instance.busy}
+          aria-disabled={save.pending || undefined}
+        >
           {t.save}
         </Button>
-        {saved && <span role="status">{t.saved}</span>}
+        {saved && (
+          <span role="status" className={styles.saved}>
+            {t.saved}
+          </span>
+        )}
       </div>
     </form>
   );

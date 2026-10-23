@@ -1,25 +1,35 @@
+/* Concept A's notice: a tinted ground, the tone's icon at the inline start, no side bar. */
 .notice {
-  padding: var(--space-3) var(--space-4);
-  border-radius: var(--radius-sm);
+  display: flex;
+  align-items: flex-start;
+  gap: 0.625rem;
+  padding: 0.625rem var(--space-3);
   border: 1px solid transparent;
-  border-inline-start-width: 3px;
+  border-radius: var(--radius-sm);
   font-size: var(--font-size-sm);
+}
+
+.icon {
+  margin-block-start: 1px;
+}
+
+/* The text keeps block flow: words and inline parts run on as one paragraph. */
+.text {
+  flex: 1 1 auto;
+  min-inline-size: 0;
 }
 
 .info {
   background: var(--color-info-bg);
-  border-inline-start-color: currentcolor;
   color: var(--color-info-text);
 }
 
 .warning {
   background: var(--color-warning-bg);
-  border-inline-start-color: currentcolor;
   color: var(--color-warning-text);
 }
 
 .danger {
   background: var(--color-danger-bg);
-  border-inline-start-color: currentcolor;
   color: var(--color-danger-text);
 }

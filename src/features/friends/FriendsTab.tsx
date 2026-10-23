@@ -5,7 +5,7 @@ import forms from '../../components/forms.module.css';
 import type { FriendAction, FriendPerson, FriendsView, SettingsView } from '../../lib/contracts';
 import { ipc } from '../../lib/ipc';
 import { strings } from '../../lib/strings';
-import { Confirm } from './Confirm';
+import { Confirm } from '../../components/Confirm';
 import { focusLost, useRowFocus } from './focus';
 import styles from './Friends.module.css';
 import type { GameForInvites } from './InviteCard';
@@ -208,6 +208,7 @@ export function FriendsTab({
                       : t.confirmRemove({ nick: person.nick })
                   }
                   action={confirming.action === 'block' ? t.block : t.remove}
+                  cancel={t.cancel}
                   pending={action.pending}
                   onYes={() => {
                     void act(confirming.action, person).then(() => {

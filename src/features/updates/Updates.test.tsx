@@ -154,6 +154,42 @@ describe('launcher updates', () => {
     });
   });
 
+  it('says where the update stands, and checks even when settings are read-only', async () => {
+    const seen = calls();
+    const snapshot = snapshotFixture();
+    render(
+      <UpdateSettings
+        snapshot={{
+          ...snapshot,
+          appVersion: '0.1.9',
+          settings: { ...snapshot.settings, writable: false },
+          update: view({ phase: 'ready', version: '0.2.0' }),
+        }}
+      />,
+    );
+    expect(screen.getByRole('heading', { level: 3, name: 'Updates' })).toBeVisible();
+    expect(
+      screen.getByText(
+        'This is version 0.1.9. Version 0.2.0 is downloaded and installs when you close the launcher.',
+      ),
+    ).toBeVisible();
+    // The choices cannot be written; looking for a version still works.
+    expect(screen.getByRole('radio', { name: 'Only tell me' })).toBeDisabled();
+    const check = screen.getByRole('button', { name: 'Check now' });
+    expect(check).toBeEnabled();
+    check.focus();
+    fireEvent.click(check);
+    // Checking keeps the button and its focus.
+    expect(screen.getByRole('button', { name: 'Checking…' })).toHaveAttribute(
+      'aria-disabled',
+      'true',
+    );
+    expect(screen.getByRole('button', { name: 'Checking…' })).toHaveFocus();
+    await waitFor(() => {
+      expect(seen.filter((c) => c.cmd === 'check_for_update')).toHaveLength(1);
+    });
+  });
+
   it('says when a build does not look for updates', () => {
     const snapshot = snapshotFixture();
     render(

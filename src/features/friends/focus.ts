@@ -1,13 +1,10 @@
 import { type FocusEvent, type RefObject, useEffect, useRef } from 'react';
+import { focusLost } from '../../lib/focus';
+
+export { focusLost };
 
 /** What takes the focus in a row: its first control. */
 const CONTROL = 'button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea';
-
-/** The focus was dropped: the control that had it went away, and WebView2 left it on the page. */
-export function focusLost(): boolean {
-  const at = document.activeElement;
-  return at === null || at === document.body;
-}
 
 /**
  * Keeps the focus in a list whose rows go away under it (a request accepted, a friend

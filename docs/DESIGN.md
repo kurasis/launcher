@@ -76,6 +76,14 @@ figures.
 - **Choices of a few options** (loader, sort, view) are a row of pills, not a select.
 - **Lists and cards** sit on white surfaces with a 1 px border; a hovered row takes
   `--color-hover`, a chosen one `--color-selected` and an accent mark.
+- **On/off settings** that apply at once are a `Switch` (a checkbox with the switch role);
+  a choice with an explanation is a `Choice`: the title, and a muted hint under it as its
+  description. No bordered option cards.
+- **Notices** are a tinted ground with the tone's icon at the inline start (`Notice`); no
+  side bar.
+- **Questions in place** (`Confirm`) take the focus and give it back to what opened them.
+  The answer that deletes or stops is danger, one that only does something big (copies the
+  data) primary.
 - **Avatars** are the 8 × 8 face of the skin with its hat layer (`SkinHead`), pixelated,
   20 % rounded. Without a skin, the default face.
 - **Icons** come from `Icon`; add a new one there in the same 24 px stroke style.

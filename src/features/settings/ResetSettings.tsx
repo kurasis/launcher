@@ -1,6 +1,10 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Button } from '../../components/Button';
+import { Choice } from '../../components/Choice';
+import { Confirm } from '../../components/Confirm';
 import { Notice } from '../../components/Notice';
+import { Panel } from '../../components/Panel';
+import { useFocusBack } from '../../components/useFocusBack';
 import forms from '../../components/forms.module.css';
 import type { ResetChoice, ResetPreview, ResetReport } from '../../lib/contracts';
 import { formatBytes } from '../../lib/format';
@@ -83,6 +87,11 @@ export function ResetSettings({ busy }: { busy: boolean }) {
   const reset = useCommand((requestId: string, chosen: ResetChoice) =>
     ipc.resetLauncher(chosen, requestId),
   );
+  // When the question closes, the focus goes back to Reset…, or to what was done.
+  const start = useRef<HTMLButtonElement>(null);
+  const done = useRef<HTMLDivElement>(null);
+  const asking = confirming && !busy;
+  useFocusBack(asking, start, done);
 
   const reload = useCallback(() => {
     ipc
@@ -108,33 +117,30 @@ export function ResetSettings({ busy }: { busy: boolean }) {
   };
 
   return (
-    <div className={styles.section}>
+    <Panel>
       {loadError !== null && <Notice tone="danger">{loadError}</Notice>}
       {busy && <Notice tone="info">{t.busy}</Notice>}
       {preview !== null && (
         <fieldset className={forms.choices} disabled={disabled}>
           <legend>{t.choose}</legend>
           {PARTS.map((part) => (
-            <label key={part} className={styles.option}>
-              <input
-                type="checkbox"
-                checked={choice[part]}
-                onChange={(event) => {
-                  toggle(part, event.target.checked);
-                }}
-              />
-              <span>
-                <span className={styles.optionTitle}>{t.parts[part]}</span>
-                <span className={styles.hint}>{describe(part, preview)}</span>
-              </span>
-            </label>
+            <Choice
+              key={part}
+              type="checkbox"
+              checked={choice[part]}
+              title={t.parts[part]}
+              hint={describe(part, preview)}
+              onChange={(event) => {
+                toggle(part, event.target.checked);
+              }}
+            />
           ))}
         </fieldset>
       )}
       {choice.installations && withData.length > 0 && (
         <Notice tone="warning">
           <p>{t.userData}</p>
-          <ul>
+          <ul className={styles.list}>
             {withData.map((item) => (
               <li key={item.instanceId}>
                 <strong>{item.displayName}</strong> ({item.versionLabel}):{' '}
@@ -160,8 +166,25 @@ export function ResetSettings({ busy }: { busy: boolean }) {
           {choice.backUpInstallations && choice.backups && <p>{t.backupsKept}</p>}
         </Notice>
       )}
-      {confirming ? (
-        <Notice tone="warning">
+      {asking ? (
+        <Confirm
+          label={t.confirm}
+          action={t.reset}
+          cancel={t.cancel}
+          pending={reset.pending}
+          onYes={() => {
+            void reset.run(choice).then((report) => {
+              setConfirming(false);
+              if (report === undefined) return;
+              setMessage(summary(report));
+              setChoice(NOTHING);
+              reload();
+            });
+          }}
+          onNo={() => {
+            setConfirming(false);
+          }}
+        >
           <p>{t.confirm}</p>
           <ul>
             {chosen.map((part) => (
@@ -169,35 +192,12 @@ export function ResetSettings({ busy }: { busy: boolean }) {
             ))}
           </ul>
           <p>{t.final}</p>
-          <div className={forms.actions}>
-            <Button
-              variant="primary"
-              disabled={disabled}
-              onClick={() => {
-                void reset.run(choice).then((report) => {
-                  setConfirming(false);
-                  if (report === undefined) return;
-                  setMessage(summary(report));
-                  setChoice(NOTHING);
-                  reload();
-                });
-              }}
-            >
-              {t.reset}
-            </Button>
-            <Button
-              disabled={reset.pending}
-              onClick={() => {
-                setConfirming(false);
-              }}
-            >
-              {t.cancel}
-            </Button>
-          </div>
-        </Notice>
+        </Confirm>
       ) : (
-        <div className={forms.actions}>
+        <div className={styles.actions}>
           <Button
+            ref={start}
+            size="small"
             disabled={disabled || chosen.length === 0}
             onClick={() => {
               setConfirming(true);
@@ -207,9 +207,17 @@ export function ResetSettings({ busy }: { busy: boolean }) {
           </Button>
         </div>
       )}
-      {reset.pending && <p role="status">{t.working}</p>}
+      {reset.pending && (
+        <p className={styles.hint} role="status">
+          {t.working}
+        </p>
+      )}
       {reset.error !== null && <Notice tone="danger">{reset.error}</Notice>}
-      {message !== null && <Notice tone="info">{message}</Notice>}
-    </div>
+      {message !== null && (
+        <div ref={done} className={styles.status} tabIndex={-1}>
+          <Notice tone="info">{message}</Notice>
+        </div>
+      )}
+    </Panel>
   );
 }

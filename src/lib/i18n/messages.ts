@@ -1365,6 +1365,7 @@ export type Messages = {
       readonly busy: string;
       readonly portableHint: string;
       readonly pendingReused: string;
+      readonly loading: string;
     };
     readonly reset: {
       readonly choose: string;
@@ -2812,6 +2813,12 @@ export type Messages = {
         readonly beta: string;
         readonly betaHint: string;
         readonly stableHint: string;
+      };
+      readonly phases: {
+        readonly available: (values: { version: string | number }) => string;
+        readonly downloading: (values: { version: string | number }) => string;
+        readonly ready: (values: { version: string | number }) => string;
+        readonly failed: string;
       };
     };
     readonly errors: {

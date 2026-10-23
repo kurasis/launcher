@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Button } from '../../components/Button';
 import { Field } from '../../components/Field';
 import { Notice } from '../../components/Notice';
+import { Panel } from '../../components/Panel';
 import forms from '../../components/forms.module.css';
 import type { MemoryLimits, SettingsView } from '../../lib/contracts';
 import { ipc } from '../../lib/ipc';
@@ -44,140 +45,154 @@ export function DefaultsForm({
       requestId,
     ),
   );
-  const disabled = save.pending || !settings.writable;
+  // Saving keeps the fields and Save as they are (a disabled control drops the focus).
+  const disabled = !settings.writable;
 
   return (
-    <form
-      className={forms.form}
-      aria-label={t.defaultsTitle}
-      onSubmit={(event) => {
-        event.preventDefault();
-        setSaved(false);
-        void save
-          .run(fixed ? toInt(heap) : 0, toInt(width), toInt(height), fullscreen)
-          .then((r) => {
-            if (r) setSaved(true);
-          });
-      }}
-    >
-      <fieldset className={forms.choices} disabled={disabled}>
-        <legend>{d.memory}</legend>
-        <label className={forms.choice}>
-          <input
-            type="radio"
-            name="default-memory"
-            checked={!fixed}
-            onChange={() => {
-              setFixed(false);
-              setSaved(false);
-            }}
-          />
-          {strings.memory.perKind}
-        </label>
-        <label className={forms.choice}>
-          <input
-            type="radio"
-            name="default-memory"
-            checked={fixed}
-            onChange={() => {
-              setFixed(true);
-              setSaved(false);
-            }}
-          />
-          {strings.memory.fixed}
-        </label>
-      </fieldset>
-      {!fixed && <p className={styles.hint}>{strings.memory.perKindHint}</p>}
-      {fixed && (
-        <>
-          <Field
-            label={d.memory}
-            hint={
-              policy
-                ? d.memoryHint({
-                    min: policy.minHeapMib,
-                    max: policy.maxHeapMib,
-                  })
-                : undefined
-            }
-          >
+    <Panel>
+      <form
+        className={forms.form}
+        aria-label={t.defaultsTitle}
+        onSubmit={(event) => {
+          event.preventDefault();
+          if (save.pending) return;
+          setSaved(false);
+          void save
+            .run(fixed ? toInt(heap) : 0, toInt(width), toInt(height), fullscreen)
+            .then((r) => {
+              if (r) setSaved(true);
+            });
+        }}
+      >
+        <fieldset className={forms.choices} disabled={disabled}>
+          <legend>{d.memory}</legend>
+          <label className={forms.choice}>
+            <input
+              type="radio"
+              name="default-memory"
+              checked={!fixed}
+              onChange={() => {
+                setFixed(false);
+                setSaved(false);
+              }}
+            />
+            {strings.memory.perKind}
+          </label>
+          <label className={forms.choice}>
+            <input
+              type="radio"
+              name="default-memory"
+              checked={fixed}
+              onChange={() => {
+                setFixed(true);
+                setSaved(false);
+              }}
+            />
+            {strings.memory.fixed}
+          </label>
+        </fieldset>
+        {!fixed && <p className={styles.hint}>{strings.memory.perKindHint}</p>}
+        {fixed && (
+          <>
+            <Field
+              label={d.memory}
+              hint={
+                policy
+                  ? d.memoryHint({
+                      min: policy.minHeapMib,
+                      max: policy.maxHeapMib,
+                    })
+                  : undefined
+              }
+            >
+              {(props) => (
+                <input
+                  {...props}
+                  className={[forms.input, styles.narrow].join(' ')}
+                  type="number"
+                  inputMode="numeric"
+                  min={policy?.minHeapMib}
+                  max={policy?.maxHeapMib}
+                  step={256}
+                  value={heap}
+                  disabled={disabled}
+                  onChange={(event) => {
+                    setHeap(event.target.value);
+                    setSaved(false);
+                  }}
+                />
+              )}
+            </Field>
+          </>
+        )}
+        <div className={styles.row}>
+          <Field label={d.width}>
             {(props) => (
               <input
                 {...props}
-                className={forms.input}
+                className={[forms.input, styles.narrow].join(' ')}
                 type="number"
                 inputMode="numeric"
-                min={policy?.minHeapMib}
-                max={policy?.maxHeapMib}
-                step={256}
-                value={heap}
+                min={bounds.minWidth}
+                max={bounds.maxWidth}
+                value={width}
                 disabled={disabled}
                 onChange={(event) => {
-                  setHeap(event.target.value);
+                  setWidth(event.target.value);
                   setSaved(false);
                 }}
               />
             )}
           </Field>
-        </>
-      )}
-      <div className={forms.row}>
-        <Field label={d.width}>
-          {(props) => (
-            <input
-              {...props}
-              className={forms.input}
-              type="number"
-              inputMode="numeric"
-              min={bounds.minWidth}
-              max={bounds.maxWidth}
-              value={width}
-              disabled={disabled}
-              onChange={(event) => {
-                setWidth(event.target.value);
-                setSaved(false);
-              }}
-            />
+          <Field label={d.height}>
+            {(props) => (
+              <input
+                {...props}
+                className={[forms.input, styles.narrow].join(' ')}
+                type="number"
+                inputMode="numeric"
+                min={bounds.minHeight}
+                max={bounds.maxHeight}
+                value={height}
+                disabled={disabled}
+                onChange={(event) => {
+                  setHeight(event.target.value);
+                  setSaved(false);
+                }}
+              />
+            )}
+          </Field>
+        </div>
+        <label className={forms.choice}>
+          <input
+            type="checkbox"
+            checked={fullscreen}
+            disabled={disabled}
+            onChange={(event) => {
+              setFullscreen(event.target.checked);
+              setSaved(false);
+            }}
+          />
+          {d.fullscreen}
+        </label>
+        {save.error !== null && <Notice tone="danger">{save.error}</Notice>}
+        <div className={styles.actions}>
+          <Button
+            type="submit"
+            variant="primary"
+            size="small"
+            disabled={disabled}
+            aria-disabled={save.pending || undefined}
+          >
+            {t.defaultsSave}
+          </Button>
+          {saved && (
+            <span role="status" className={styles.saved}>
+              {t.defaultsSaved}
+            </span>
           )}
-        </Field>
-        <Field label={d.height}>
-          {(props) => (
-            <input
-              {...props}
-              className={forms.input}
-              type="number"
-              inputMode="numeric"
-              min={bounds.minHeight}
-              max={bounds.maxHeight}
-              value={height}
-              disabled={disabled}
-              onChange={(event) => {
-                setHeight(event.target.value);
-                setSaved(false);
-              }}
-            />
-          )}
-        </Field>
-      </div>
-      <label className={forms.choice}>
-        <input
-          type="checkbox"
-          checked={fullscreen}
-          disabled={disabled}
-          onChange={(event) => {
-            setFullscreen(event.target.checked);
-            setSaved(false);
-          }}
-        />
-        {d.fullscreen}
-      </label>
-      {save.error !== null && <Notice tone="danger">{save.error}</Notice>}
-      <div className={forms.actions}>
-        <Button type="submit" disabled={disabled}>
-          {t.defaultsSave}
-        </Button>
-        {saved && <span role="status">{t.defaultsSaved}</span>}
-      </div>
-    </form>
+        </div>
+      </form>
+    </Panel>
   );
 }

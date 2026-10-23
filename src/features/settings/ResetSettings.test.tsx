@@ -64,6 +64,12 @@ describe('ResetSettings', () => {
       screen.getByText('Existing backups are deleted first; the new ones are kept.'),
     ).toBeVisible();
 
+    // Cancel gives the focus back to Reset….
+    screen.getByRole('button', { name: 'Reset…' }).focus();
+    fireEvent.click(screen.getByRole('button', { name: 'Reset…' }));
+    expect(screen.getByRole('alertdialog', { name: 'Reset these parts?' })).toHaveFocus();
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    expect(screen.getByRole('button', { name: 'Reset…' })).toHaveFocus();
     fireEvent.click(screen.getByRole('button', { name: 'Reset…' }));
     const confirm = screen.getByText('Reset these parts?').closest('div') as HTMLElement;
     expect(
@@ -88,6 +94,9 @@ describe('ResetSettings', () => {
     expect(
       await screen.findByText(/Reset done: 2 installations deleted \(1 backed up first\)/),
     ).toBeVisible();
+    // Nothing is chosen any more, so Reset… is closed: the focus goes to what was done.
+    expect(screen.getByRole('button', { name: 'Reset…' })).toBeDisabled();
+    expect(screen.getByText(/Reset done/).closest('[tabindex]')).toHaveFocus();
   });
 
   it('waits while something runs', async () => {

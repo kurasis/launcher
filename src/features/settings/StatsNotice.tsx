@@ -32,8 +32,11 @@ export function StatsNotice({
       <div className={styles.row}>
         <p>{t.text}</p>
         <div className={styles.actions}>
-          <Button onClick={seen}>{t.gotIt}</Button>
+          <Button size="small" onClick={seen}>
+            {t.gotIt}
+          </Button>
           <Button
+            size="small"
             aria-label={t.settingsLabel}
             onClick={() => {
               seen();

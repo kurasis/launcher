@@ -2,9 +2,13 @@ import { useId, type ReactNode } from 'react';
 import styles from './Panel.module.css';
 
 interface PanelProps {
-  title: string;
+  /** The panel's heading. Without one the panel is only a surface around its content,
+   * such as the first panel of a settings section, which the section names already. */
+  title?: string;
   /** The heading's level: 2 for a screen's own panels, deeper inside another section. */
   level?: 2 | 3 | 4;
+  /** The heading's id, for a group inside that its title names too. */
+  headingId?: string;
   /** Optional element rendered next to the heading, e.g. a status badge. */
   aside?: ReactNode;
   /** The aside follows the heading instead of sitting at the far end. */
@@ -13,13 +17,28 @@ interface PanelProps {
 }
 
 /** A titled content section exposed to assistive technology as a labelled region. */
-export function Panel({ title, level = 2, aside, asideAtTitle = false, children }: PanelProps) {
-  const headingId = useId();
+export function Panel({
+  title,
+  level = 2,
+  headingId,
+  aside,
+  asideAtTitle = false,
+  children,
+}: PanelProps) {
+  const ownId = useId();
+  const id = headingId ?? ownId;
+  if (title === undefined) {
+    return (
+      <div className={styles.panel}>
+        <div className={styles.body}>{children}</div>
+      </div>
+    );
+  }
   const Heading = `h${String(level)}` as 'h2' | 'h3' | 'h4';
   return (
-    <section className={styles.panel} aria-labelledby={headingId}>
+    <section className={styles.panel} aria-labelledby={id}>
       <header className={[styles.header, asideAtTitle && styles.atTitle].filter(Boolean).join(' ')}>
-        <Heading id={headingId} className={styles.title}>
+        <Heading id={id} className={styles.title}>
           {title}
         </Heading>
         {aside}

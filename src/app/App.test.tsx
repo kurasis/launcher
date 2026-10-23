@@ -686,7 +686,7 @@ describe('App', () => {
       'aria-selected',
       'true',
     );
-    expect(screen.getByRole('checkbox', { name: /Anonymous statistics/ })).toBeChecked();
+    expect(screen.getByRole('switch', { name: /Anonymous statistics/ })).toBeChecked();
     expect(screen.queryByText(/sends anonymous statistics without any ID/)).toBeNull();
     await waitFor(() => {
       expect(
@@ -764,7 +764,7 @@ describe('App', () => {
     // Settings has the feed's own section.
     fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
     fireEvent.click(screen.getByRole('tab', { name: 'Feed' }));
-    expect(screen.getByRole('checkbox', { name: /Show the feed/ })).toBeChecked();
+    expect(screen.getByRole('switch', { name: /Show the feed/ })).toBeChecked();
   });
 
   it('opens the skins screen when it is the start screen', async () => {

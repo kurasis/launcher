@@ -1,5 +1,7 @@
+import { useId } from 'react';
+import { Choice } from '../../components/Choice';
 import { Notice } from '../../components/Notice';
-import forms from '../../components/forms.module.css';
+import { Panel } from '../../components/Panel';
 import type { DownloadSource, SettingsPatch, SettingsView } from '../../lib/contracts';
 import { ipc } from '../../lib/ipc';
 import { strings } from '../../lib/strings';
@@ -22,32 +24,37 @@ export function DownloadSourceSettings({
     ipc.setAppSettings(patch, requestId),
   );
   const mirrored = sourceNames(mirroredHosts);
+  const headingId = useId();
 
   return (
-    <fieldset className={forms.choices} disabled={update.pending || !settings.writable}>
-      <legend>{t.title}</legend>
-      {choices.map((choice) => (
-        <label key={choice} className={styles.check}>
-          <input
+    <Panel title={t.title} level={3} headingId={headingId}>
+      <fieldset
+        className={styles.choices}
+        aria-labelledby={headingId}
+        disabled={!settings.writable}
+        aria-busy={update.pending || undefined}
+      >
+        {choices.map((choice) => (
+          <Choice
+            key={choice}
             type="radio"
             name="downloadSource"
             value={choice}
             checked={settings.downloadSource === choice}
+            title={t.sources[choice]}
+            hint={t.hints[choice]}
             onChange={() => {
-              void update.run({ downloadSource: choice });
+              // A change being saved: the choices wait for it but keep the focus.
+              if (!update.pending) void update.run({ downloadSource: choice });
             }}
           />
-          <span>
-            <span className={styles.strong}>{t.sources[choice]}</span>
-            <span className={styles.hint}>{t.hints[choice]}</span>
-          </span>
-        </label>
-      ))}
+        ))}
+      </fieldset>
       <p className={styles.hint}>{t.checked}</p>
       {mirrored.length > 0 && (
         <Notice tone="info">{t.inUse({ sites: mirrored.join(', ') })}</Notice>
       )}
       {update.error !== null && <Notice tone="danger">{update.error}</Notice>}
-    </fieldset>
+    </Panel>
   );
 }

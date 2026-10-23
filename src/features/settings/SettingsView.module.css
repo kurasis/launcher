@@ -1,161 +1,210 @@
+/* Settings (concept A): the sections down the inline start, the chosen one beside them.
+   A narrow screen puts the sections in a row above. */
 .layout {
   display: grid;
-  gap: var(--space-6);
-  grid-template-columns: minmax(12rem, 14rem) minmax(0, 1fr);
+  gap: var(--space-4);
   align-items: start;
 }
 
-@media (max-width: 760px) {
+@container screen (min-width: 40rem) {
   .layout {
-    grid-template-columns: 1fr;
+    grid-template-columns: 12.5rem minmax(0, 1fr);
+    gap: var(--space-6);
   }
 }
 
-.sections {
-  display: grid;
-  gap: var(--space-1);
-  padding: var(--space-2);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  background: var(--color-surface);
-  backdrop-filter: blur(var(--blur));
+.subnav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
 }
 
-@media (max-width: 760px) {
-  .sections {
-    display: flex;
-    flex-wrap: wrap;
+@container screen (min-width: 40rem) {
+  .subnav {
+    flex-direction: column;
+    flex-wrap: nowrap;
   }
 }
 
-.sectionTab {
+.tab {
+  position: relative;
   padding: var(--space-2) var(--space-3);
-  border: 1px solid transparent;
+  border: 0;
   border-radius: var(--radius-sm);
-  background: transparent;
-  color: var(--color-text-muted);
+  background: none;
+  color: var(--color-text-2);
   font: inherit;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
   font-size: var(--font-size-sm);
+  font-weight: 500;
   text-align: start;
   cursor: pointer;
 }
 
-.sectionTab:hover {
+.tab:hover {
+  background: var(--color-hover);
   color: var(--color-text);
 }
 
-.sectionTab[aria-selected='true'] {
+.tab[aria-selected='true'] {
+  background: var(--color-selected);
   color: var(--color-text);
-  border-color: var(--color-border);
-  background: var(--color-surface-raised);
-  box-shadow: inset 3px 0 0 var(--color-accent);
 }
 
-/* Right-to-left languages (D-038): the mark sits on the starting edge. */
-:global([dir='rtl']) .sectionTab[aria-selected='true'] {
-  box-shadow: inset -3px 0 0 var(--color-accent);
+/* A chosen row's accent mark (docs/DESIGN.md), at the inline start. */
+.tab[aria-selected='true']::before {
+  content: '';
+  position: absolute;
+  inset-block: var(--space-2);
+  inset-inline-start: 0;
+  inline-size: 3px;
+  border-radius: var(--radius-pill);
+  background: var(--color-accent);
 }
 
-.section {
+/* The section's hint, its notices and its panels, one under another. */
+.content {
   display: grid;
-  gap: var(--space-6);
-}
-
-.subheading {
-  font-size: var(--font-size-md);
-  font-weight: 600;
-  margin-bottom: var(--space-2);
+  gap: 1.25rem;
+  min-inline-size: 0;
+  max-inline-size: 47.5rem;
 }
 
 .hint {
-  display: block;
   color: var(--color-text-muted);
   font-size: var(--font-size-sm);
-  font-weight: 400;
 }
 
-.path {
-  font-family: var(--font-mono);
-  overflow-wrap: anywhere;
-  color: var(--color-text-muted);
-}
-
-.option {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
-  gap: var(--space-3);
-  align-items: start;
-  padding: var(--space-3);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  background: var(--color-neutral-bg);
-  cursor: pointer;
-}
-
-.option:has(input:checked) {
-  border-color: var(--color-accent);
-  background: var(--color-accent-soft);
-}
-
-.option input {
-  margin-top: 0.2rem;
-}
-
-.optionTitle {
-  display: block;
-  font-weight: 600;
-  margin-bottom: var(--space-1);
-}
-
-.facts {
-  display: grid;
-  gap: var(--space-2);
-  margin: 0;
-}
-
-.fact {
+/* Fields side by side, wrapping when there is no room. */
+.row {
   display: flex;
   flex-wrap: wrap;
-  justify-content: space-between;
-  gap: var(--space-2);
-  padding: var(--space-2) var(--space-3);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-sm);
-  background: var(--color-neutral-bg);
+  align-items: flex-start;
+  gap: var(--space-4);
 }
 
-.fact dt {
-  font-weight: 600;
+.wide {
+  inline-size: 15rem;
+  max-inline-size: 100%;
 }
 
-.fact dd {
-  margin: 0;
-  color: var(--color-text-muted);
-  font-family: var(--font-mono);
-  font-size: var(--font-size-sm);
+.long {
+  inline-size: 100%;
+  max-inline-size: 28rem;
+}
+
+/* Number fields: a few digits. */
+.narrow {
+  inline-size: 10rem;
+  max-inline-size: 100%;
 }
 
 .field {
   display: grid;
+  justify-items: start;
   gap: var(--space-1);
+}
+
+/* A label over something as wide as the panel. */
+.block {
+  display: grid;
+  gap: var(--space-1);
+}
+
+.label {
+  font-size: var(--font-size-sm);
   font-weight: 600;
+  color: var(--color-text-2);
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+/* "Saved." beside a Save button. */
+.saved {
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+}
+
+/* A folder, an ID: read left to right, broken anywhere. */
+.path {
+  font-family: var(--font-mono);
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+  overflow-wrap: anywhere;
 }
 
 /* What the statistics send, as it went (D-071). */
 .packet {
-  font-family: var(--font-mono);
-  font-size: var(--font-size-sm);
-  font-weight: 400;
-  max-height: 18rem;
+  max-block-size: 18rem;
   overflow: auto;
   margin: 0;
   padding: var(--space-3);
-  background: rgb(0 0 0 / 25%);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-sm);
+  background: var(--color-surface-sunken);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-xs);
   white-space: pre-wrap;
   overflow-wrap: anywhere;
+}
+
+/* A status line that takes the focus when the button that had it goes. */
+.status:focus {
+  outline: none;
+}
+
+/* A list inside a notice. */
+.list {
+  margin: var(--space-1) 0;
+  padding-inline-start: var(--space-6);
+}
+
+/* A group that is the whole panel: its legend reads as the panel's title. */
+fieldset legend.legend {
+  margin-block-end: var(--space-1);
+  color: var(--color-text);
+  font-size: var(--font-size-md);
+  font-weight: 600;
+}
+
+/* A field and its button on one line, the button at the field's foot. */
+.addRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--space-2);
+}
+
+/* Rows of names, each with a small Remove at the end. */
+.items {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.item {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-1) var(--space-3);
+  padding-block: var(--space-1);
+  border-block-end: 1px solid var(--color-border-soft);
+  overflow-wrap: anywhere;
+}
+
+.item:last-child {
+  border-block-end: 0;
+}
+
+@media (forced-colors: active) {
+  .tab[aria-selected='true']::before {
+    forced-color-adjust: none;
+    background: Highlight;
+  }
 }
