@@ -23,6 +23,23 @@ Joke versions that are in Mojang's list (`inMojangList`) are served from here to
 entry has its version file (`descriptor`, pinned by `sha1`) and its jars (`files`,
 with where they came from).
 
+## In the launcher
+
+- `src-tauri/src/catalog/extra.rs` reads the list from `https://upd.lapi.sh/versions/manifest.json`
+  with Mojang's catalog (every 6 hours, or when the player checks again). It takes a list only
+  when its signature verifies with the update key built into the launcher, names the kind
+  `versions` and its serial, and the serial is not lower than the list kept in
+  `metadata/extra-versions.json`. A build without the key (`LAUNCHER_UPDATE_PUBKEY`) shows none
+  of these versions; one installed before still repairs and starts from its lock.
+- The versions follow Mojang's in the catalog; an April Fools version Mojang lists too is ours
+  from then on. The picker shows them on the Special tab in the list's order, by name, with
+  the update's name and the group.
+- Their version files and game jars come from `upd.lapi.sh/versions/` only
+  (`SourcePolicy::ExtraVersions`, never the mirror); libraries, assets and Java from Mojang.
+- Worlds with Friends leaves them out until their own switch comes; a world made before on an
+  April Fools version still gets its server from here.
+- The skins mod is not offered on them: it is chosen by exact game version.
+
 ## A new version
 
 Each April, or when an archive finds a build:

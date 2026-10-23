@@ -522,13 +522,28 @@
         "release": "Релизы",
         "snapshot": "Снапшоты",
         "old_beta": "Бета",
-        "old_alpha": "Альфа"
+        "old_alpha": "Альфа",
+        "special": "Особые"
       },
       "typeHints": {
         "release": "Стабильные версии.",
         "snapshot": "Тестовые версии перед релизом. Они могут повредить миры — сохраните копии важных миров.",
         "old_beta": "Бета-версии 2010–2011 годов. Работают на Java 8, демо-режима у них нет, поэтому для игры нужен вход в аккаунт.",
-        "old_alpha": "Версии Alpha, Classic и pre-Classic 2009–2010 годов. Работают на Java 8, демо-режима у них нет, поэтому для игры нужен вход в аккаунт."
+        "old_alpha": "Версии Alpha, Classic и pre-Classic 2009–2010 годов. Работают на Java 8, демо-режима у них нет, поэтому для игры нужен вход в аккаунт.",
+        "special": "Версии, которых нет в списке Mojang: первоапрельские, 2.0, Combat Test, экспериментальные и ранние сборки. Файлы игры — с сервера лаунчера, проверены на вирусы. Для старых нужен вход в аккаунт; сохраните копии важных миров."
+      },
+      "groups": {
+        "joke": "Первоапрельская",
+        "unobfuscated": "Без обфускации",
+        "experimental": "Экспериментальная",
+        "combat": "Combat Test",
+        "first-build": "Первая сборка",
+        "early-release": "Ранняя 1.x",
+        "beta": "Бета",
+        "alpha": "Альфа",
+        "infdev": "Infdev",
+        "indev": "Indev",
+        "classic": "Classic"
       },
       "search": "Найти версию",
       "noMatch": "Подходящих версий нет.",
@@ -544,7 +559,8 @@
         "available": "Доступна у Mojang",
         "not_in_catalog": "Нет в каталоге Mojang",
         "catalog_unavailable": "Каталог Mojang недоступен",
-        "checking": "Проверяем каталог Mojang…"
+        "checking": "Проверяем каталог Mojang…",
+        "special": "Доступна на сервере лаунчера"
       },
       "stale": "Показан последний сохранённый каталог: обновить его не удалось.",
       "refresh": "Проверить снова",
@@ -2954,6 +2970,7 @@
     "{mod} needs {dependency} {version} or newer, and the world has {actual}. Take an older release of {mod} or remove it.": "Для {mod} нужен {dependency} {version} или новее, а в мире {actual}. Возьмите более старый выпуск {mod} или уберите его.",
     "{mod} needs {dependency} {version}, and the world has {actual}. Take another release of {mod} or remove it.": "Для {mod} нужен {dependency} {version}, а в мире {actual}. Возьмите другой выпуск {mod} или уберите его.",
     "{mod} needs {dependency}, which is not in the world. Add it to the installation or remove {mod}, then update the world's mods.": "Для {mod} нужен {dependency}, которого нет в мире. Добавьте его в установку или уберите {mod}, затем обновите моды мира.",
-    "{mod} stopped the world server while it started. Take another release of {mod} or remove it.": "{mod} остановил сервер мира во время запуска. Возьмите другой выпуск {mod} или уберите его."
+    "{mod} stopped the world server while it started. Take another release of {mod} or remove it.": "{mod} остановил сервер мира во время запуска. Возьмите другой выпуск {mod} или уберите его.",
+    "The list of other Minecraft versions was refused.": "Список других версий Minecraft отклонён."
   }
 }

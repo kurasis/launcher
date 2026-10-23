@@ -76,9 +76,14 @@ pub fn plan(bytes: &[u8], minecraft: &str, ctx: &RuleContext) -> LauncherResult<
 }
 
 /// The download of the JAR; its URL must be on Mojang's artifact hosts. Like
-/// every Mojang file, it comes from the download mirror when Mojang fails.
+/// every Mojang file, it comes from the download mirror when Mojang fails. A
+/// version of our own list has it on our update server only (D-073).
 pub fn request(plan: &ServerPlan) -> LauncherResult<DownloadRequest> {
-    let source = SourcePolicy::MojangArtifacts;
+    let source = if SourcePolicy::ExtraVersions.check(&plan.jar.url).is_ok() {
+        SourcePolicy::ExtraVersions
+    } else {
+        SourcePolicy::MojangArtifacts
+    };
     Ok(DownloadRequest {
         source,
         url: source.check(&plan.jar.url)?,
@@ -540,6 +545,28 @@ mod tests {
         );
         assert_eq!(request.url.host_str(), Some("piston-data.mojang.com"));
         assert!(request.source.mirrored());
+    }
+
+    #[test]
+    fn a_version_of_our_list_has_its_server_from_our_server_only() {
+        // 24w14potato as our list serves it (D-073).
+        let data: serde_json::Value =
+            serde_json::from_slice(include_bytes!("../../../data/extra-versions.json")).unwrap();
+        let potato = data["versions"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|v| v["id"] == "24w14potato")
+            .unwrap();
+        let bytes = potato["descriptor"].as_str().unwrap().as_bytes();
+        // Its own id is not a world version yet; the toggle comes with Worlds.
+        let mut descriptor: serde_json::Value = serde_json::from_slice(bytes).unwrap();
+        descriptor["id"] = "1.21.1".into();
+        let plan = plan(&serde_json::to_vec(&descriptor).unwrap(), "1.21.1", &ctx()).unwrap();
+        let request = request(&plan).unwrap();
+        assert_eq!(request.source, SourcePolicy::ExtraVersions);
+        assert_eq!(request.url.host_str(), Some("upd.lapi.sh"));
+        assert!(!request.source.mirrored());
     }
 
     #[test]

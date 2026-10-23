@@ -70,6 +70,7 @@ impl HttpTransport {
             SourcePolicy::Adoptium,
             SourcePolicy::ModLoaders,
             SourcePolicy::ModsCatalog,
+            SourcePolicy::ExtraVersions,
         ] {
             clients.insert(policy, PublicClient::new(policy, app_version)?);
         }

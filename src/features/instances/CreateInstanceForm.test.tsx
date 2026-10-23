@@ -23,6 +23,7 @@ function catalog(availability: VersionAvailability, stale = false): CatalogView 
     releaseTime: '2024-08-08T12:00:00+00:00',
     verified,
     availability,
+    special: null,
   });
   return {
     versions: [
@@ -235,6 +236,40 @@ describe('CreateInstanceForm', () => {
     await waitFor(() => {
       expect(calls.find((c) => c.cmd === 'create_instance')?.args).toMatchObject({
         request: { payload: { displayName: 'rd-132211', versionId: 'rd-132211' } },
+      });
+    });
+  });
+
+  it("names a version of the launcher's own list by its name and source", async () => {
+    const view = catalog('available');
+    view.versions.push({
+      id: '2.0-blue',
+      versionType: 'release',
+      releaseTime: '2013-04-01T00:00:00+00:00',
+      verified: false,
+      availability: 'available',
+      special: {
+        name: '2.0 Blue',
+        title: 'Minecraft 2.0',
+        group: 'joke',
+        variant: null,
+        server: false,
+      },
+    });
+    const calls = setup(view);
+    await screen.findByText('Selected: 1.21.1');
+    fireEvent.click(screen.getByRole('tab', { name: /Special/ }));
+    fireEvent.click(screen.getByRole('button', { name: /2\.0 Blue/ }));
+    const line = screen.getByText(/Selected: /).closest('[role="status"]') as HTMLElement;
+    // The name is isolated for right to left.
+    expect(line).toHaveTextContent(
+      "Selected: \u20682.0 Blue\u2069 · Available from the launcher's server",
+    );
+    expect(screen.getByLabelText('Name')).toHaveValue('2.0 Blue');
+    fireEvent.click(screen.getByRole('button', { name: 'Create installation' }));
+    await waitFor(() => {
+      expect(calls.find((c) => c.cmd === 'create_instance')?.args).toMatchObject({
+        request: { payload: { displayName: '2.0 Blue', versionId: '2.0-blue' } },
       });
     });
   });

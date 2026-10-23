@@ -437,11 +437,18 @@ pub fn plan_game_in(
     };
     let mut seen = HashMap::new();
 
+    // A version file from our update server names its game jar there, and only
+    // there (D-073); Mojang's name theirs on Mojang's hosts.
+    let client_source = if SourcePolicy::ExtraVersions.check(descriptor_url).is_ok() {
+        SourcePolicy::ExtraVersions
+    } else {
+        SourcePolicy::MojangArtifacts
+    };
     let client = artifact(
         ArtifactRole::Client,
         format!("shared/clients/{}/client.jar", descriptor.client.sha1),
         &descriptor.client,
-        SourcePolicy::MojangArtifacts,
+        client_source,
         Some(format!("{} client", descriptor.id)),
     )?;
     check_size_conflict(&mut seen, &client)?;

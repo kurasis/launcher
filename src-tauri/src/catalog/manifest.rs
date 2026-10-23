@@ -18,6 +18,8 @@ pub struct CatalogEntry {
     pub sha1: Sha1,
     /// ISO 8601 release time; display and ordering only.
     pub release_time: Option<String>,
+    /// A version of our own list, not Mojang's (D-073).
+    pub special: Option<super::extra::Special>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -31,6 +33,21 @@ pub struct Catalog {
 impl Catalog {
     pub fn find(&self, id: &str) -> Option<&CatalogEntry> {
         self.versions.iter().find(|v| v.id == id)
+    }
+
+    /// Adds the versions of our own list after Mojang's, in the list's order
+    /// (D-073). One that Mojang lists too (an April Fools version) is ours
+    /// from then on: its jars come from our server.
+    pub fn add_extra(&mut self, list: &super::extra::List) {
+        let ours: std::collections::HashSet<String> = list
+            .versions
+            .iter()
+            .map(|v| v.id.to_ascii_lowercase())
+            .collect();
+        self.versions
+            .retain(|e| !ours.contains(&e.id.to_ascii_lowercase()));
+        self.versions
+            .extend(list.versions.iter().filter_map(super::extra::Listed::entry));
     }
 }
 
@@ -64,6 +81,7 @@ pub fn parse(bytes: &[u8]) -> LauncherResult<Catalog> {
                     .get("releaseTime")
                     .and_then(Value::as_str)
                     .map(str::to_owned),
+                special: None,
             })
         })
         .collect();

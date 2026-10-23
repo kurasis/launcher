@@ -52,7 +52,11 @@ export function ImportDialog({
     void ipc
       .listSupportedVersions(false)
       .then((catalog) => {
-        setGames(catalog.versions.filter((v) => v.versionType === 'release').map((v) => v.id));
+        setGames(
+          catalog.versions
+            .filter((v) => v.versionType === 'release' && v.special == null)
+            .map((v) => v.id),
+        );
       })
       .catch(() => undefined);
   }, []);

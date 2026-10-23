@@ -730,6 +730,33 @@ export type VersionAvailability = 'available' | 'not_in_catalog' | 'catalog_unav
 /** Mojang's vanilla version types (D-035). */
 export type VersionType = 'release' | 'snapshot' | 'old_beta' | 'old_alpha';
 
+/** The groups of the versions Mojang's list does not have (D-073). */
+export type SpecialGroup =
+  | 'joke'
+  | 'unobfuscated'
+  | 'experimental'
+  | 'combat'
+  | 'first-build'
+  | 'early-release'
+  | 'beta'
+  | 'alpha'
+  | 'infdev'
+  | 'indev'
+  | 'classic';
+
+/** A version of the launcher's own list, not Mojang's (D-073). */
+export interface SpecialVersion {
+  /** How it is shown: `2.0 Blue`, `Combat Test 8c`, `20w14∞`. */
+  name: string;
+  /** The update's name, for April Fools versions: `Craftmine Update`. */
+  title: string | null;
+  group: SpecialGroup;
+  /** `first-build`: an earlier build of a version, replaced under its name. */
+  variant: 'first-build' | null;
+  /** Has a server. */
+  server: boolean;
+}
+
 export interface VersionView {
   id: string;
   versionType: VersionType;
@@ -737,9 +764,12 @@ export interface VersionView {
   /** Shipped, pinned and checked by this project. */
   verified: boolean;
   availability: VersionAvailability;
+  /** Set for the versions of the launcher's own list, shown on a tab of their own. */
+  special: SpecialVersion | null;
 }
 
-/** Returned by `list_supported_versions`: every vanilla version, newest first.
+/** Returned by `list_supported_versions`: every vanilla version, newest first,
+ * then the versions of the launcher's own list in its order (D-073).
  * `latestRelease` and `latestSnapshot` are informational only. */
 export interface CatalogView {
   versions: VersionView[];

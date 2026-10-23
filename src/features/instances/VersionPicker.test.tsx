@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { CatalogView, VersionView } from '../../lib/contracts';
+import type { CatalogView, SpecialVersion, VersionView } from '../../lib/contracts';
 import { VersionPicker } from './VersionPicker';
 
 const RELEASED = '2024-08-08T12:00:00+00:00';
@@ -16,6 +16,7 @@ function version(
     releaseTime: RELEASED,
     verified: false,
     availability: 'available',
+    special: null,
     ...extra,
   };
 }
@@ -40,6 +41,38 @@ const everything = catalog([
 ]);
 
 const tabNames = () => screen.getAllByRole('tab').map((tab) => tab.textContent);
+
+/** The launcher's own versions (D-073), in its list's order, after Mojang's. */
+const special = (
+  id: string,
+  versionType: VersionView['versionType'],
+  extra: Partial<SpecialVersion> = {},
+): VersionView =>
+  version(id, versionType, {
+    special: {
+      name: id,
+      title: null,
+      group: 'joke',
+      variant: null,
+      server: true,
+      ...extra,
+    },
+  });
+
+const withSpecial = catalog([
+  version('26.4-snapshot-4', 'snapshot'),
+  version('1.21.1', 'release', { verified: true }),
+  version('rd-132211', 'old_alpha'),
+  special('26w14a', 'snapshot', { title: 'Herdcraft Update' }),
+  special('24w14potato-first', 'snapshot', {
+    name: '24w14potato (first build)',
+    title: 'Poisonous Potato Update',
+    variant: 'first-build',
+  }),
+  special('2.0-blue', 'release', { name: '2.0 Blue', title: 'Minecraft 2.0', server: false }),
+  special('1.14_combat-212796', 'snapshot', { name: 'Combat Test 1', group: 'combat' }),
+  special('c0.0.12a_03', 'old_alpha', { group: 'classic', server: false }),
+]);
 
 afterEach(() => {
   document.documentElement.dir = '';
@@ -209,6 +242,61 @@ describe('VersionPicker', () => {
     fireEvent.change(search, { target: { value: '  1.12  ' } });
     expect(screen.getByRole('list', { name: 'Releases' })).toHaveTextContent('1.12.2');
     expect(screen.getByRole('list', { name: 'Releases' })).not.toHaveTextContent('1.21.1');
+  });
+
+  it('keeps the versions Mojang does not list on a tab of their own, last', () => {
+    render(<VersionPicker catalog={withSpecial} value="1.21.1" onChange={() => undefined} />);
+    expect(tabNames()).toEqual(['Releases1', 'Snapshots1', 'Alpha1', 'Special5']);
+    fireEvent.click(screen.getByRole('tab', { name: /Snapshots/ }));
+    expect(screen.getByRole('list', { name: 'Snapshots' })).not.toHaveTextContent('26w14a');
+    fireEvent.click(screen.getByRole('tab', { name: /Special/ }));
+    const list = screen.getByRole('list', { name: 'Special' });
+    // The list's own order: April Fools versions first, then the rest.
+    const rows = within(list).getAllByRole('button');
+    expect(rows.map((row) => row.querySelector('bdi')?.textContent)).toEqual([
+      '26w14a',
+      '24w14potato (first build)',
+      '2.0 Blue',
+      'Combat Test 1',
+      'c0.0.12a_03',
+    ]);
+    expect(screen.getByText(/Versions Mojang's list does not have/)).toBeVisible();
+  });
+
+  it('shows a special version by its name, update and group', () => {
+    render(<VersionPicker catalog={withSpecial} value="2.0-blue" onChange={() => undefined} />);
+    expect(screen.getByRole('tab', { name: /Special/ })).toHaveAttribute('aria-selected', 'true');
+    const blue = screen.getByRole('button', { name: /2\.0 Blue/ });
+    expect(blue).toHaveAttribute('aria-pressed', 'true');
+    expect(within(blue).getByText('Minecraft 2.0')).toBeVisible();
+    // The id only tells an earlier build from the one Mojang kept.
+    expect(within(blue).queryByText('2.0-blue')).toBeNull();
+    expect(within(blue).getByText('April Fools')).toBeVisible();
+    const potato = screen.getByRole('button', { name: /24w14potato \(first build\)/ });
+    expect(within(potato).getByText('First build')).toBeVisible();
+    expect(within(potato).getByText('24w14potato-first')).toBeVisible();
+    const herd = screen.getByRole('button', { name: /^26w14a/ });
+    // Never "Latest", and the id is not repeated.
+    expect(within(herd).queryByText('Latest')).toBeNull();
+    expect(within(herd).getAllByText('26w14a')).toHaveLength(1);
+    expect(
+      within(screen.getByRole('button', { name: /Combat Test 1/ })).getByText('Combat Test'),
+    ).toBeVisible();
+  });
+
+  it('finds special versions by id, name and update', () => {
+    render(<VersionPicker catalog={withSpecial} value="2.0-blue" onChange={() => undefined} />);
+    const search = screen.getByRole('searchbox', { name: 'Find a version' });
+    const list = () => screen.getByRole('list', { name: 'Special' });
+    fireEvent.change(search, { target: { value: 'potato update' } });
+    expect(list()).toHaveTextContent('24w14potato');
+    expect(list()).not.toHaveTextContent('2.0 Blue');
+    fireEvent.change(search, { target: { value: 'COMBAT' } });
+    expect(list()).toHaveTextContent('Combat Test 1');
+    fireEvent.change(search, { target: { value: '212796' } });
+    expect(list()).toHaveTextContent('Combat Test 1');
+    fireEvent.change(search, { target: { value: '\u202E' } });
+    expect(screen.getByText('No version matches.')).toBeVisible();
   });
 
   it('says what limits the list before the version type hint', () => {

@@ -59,6 +59,10 @@ pub enum SourcePolicy {
     /// (D-065): Mojang's public session server and texture host, asked by
     /// profile ID without any token. Not on the mirror.
     MojangSkins,
+    /// The versions Mojang's list does not have (D-073): our signed list, their
+    /// version files and game jars under `/versions/` on the update server
+    /// only. Not on the mirror.
+    ExtraVersions,
 }
 
 // `launchermeta` is Mojang's previous metadata host; older descriptors still
@@ -132,6 +136,10 @@ const SKINS_MOD_LIST_HOSTS: &[&str] = &["upd.lapi.sh"];
 /// (D-065).
 const SKINS_MOD_HOSTS: &[&str] = &["upd.lapi.sh"];
 const MOJANG_SKINS_HOSTS: &[&str] = &["sessionserver.mojang.com", "textures.minecraft.net"];
+/// Players get these versions from our update server only (D-073).
+const EXTRA_VERSIONS_HOSTS: &[&str] = &["upd.lapi.sh"];
+/// The only path [`SourcePolicy::ExtraVersions`] reaches there.
+const EXTRA_VERSIONS_PATH: &str = "/versions/";
 
 pub const MAX_REDIRECTS: usize = 5;
 
@@ -151,6 +159,7 @@ impl SourcePolicy {
             Self::SkinsMod => SKINS_MOD_HOSTS,
             Self::SkinsModList => SKINS_MOD_LIST_HOSTS,
             Self::MojangSkins => MOJANG_SKINS_HOSTS,
+            Self::ExtraVersions => EXTRA_VERSIONS_HOSTS,
         }
     }
 
@@ -167,17 +176,24 @@ impl SourcePolicy {
                 | Self::SkinsMod
                 | Self::SkinsModList
                 | Self::MojangSkins
+                | Self::ExtraVersions
         )
     }
 
     /// The artifact source whose allowlist names this URL's host: Mojang's
     /// artifact hosts or a mod loader's. Loader profiles list both; OptiFine's
-    /// builds come from the mods catalog.
+    /// builds come from the mods catalog, the jars of versions Mojang's list does
+    /// not have from our update server.
     pub fn for_artifact(raw: &str) -> LauncherResult<(Self, Url)> {
         let url = Url::parse(raw).map_err(|_| untrusted_url())?;
-        match [Self::MojangArtifacts, Self::ModLoaders, Self::ModsCatalog]
-            .into_iter()
-            .find(|policy| policy.allows(&url))
+        match [
+            Self::MojangArtifacts,
+            Self::ModLoaders,
+            Self::ModsCatalog,
+            Self::ExtraVersions,
+        ]
+        .into_iter()
+        .find(|policy| policy.allows(&url))
         {
             Some(policy) => Ok((policy, url)),
             None => {
@@ -186,7 +202,8 @@ impl SourcePolicy {
         }
     }
 
-    /// Exact-host check: HTTPS, default port, no credentials, host on the list.
+    /// Exact-host check: HTTPS, default port, no credentials, host on the list
+    /// (and for our versions, their path there).
     pub fn allows(self, url: &Url) -> bool {
         url.scheme() == "https"
             && url.port().is_none()
@@ -195,6 +212,7 @@ impl SourcePolicy {
             && url
                 .host_str()
                 .is_some_and(|host| self.hosts().contains(&host))
+            && (self != Self::ExtraVersions || url.path().starts_with(EXTRA_VERSIONS_PATH))
     }
 
     /// Parses and checks a URL that came from metadata.
@@ -634,6 +652,42 @@ mod tests {
         ));
         assert!(!ok(SourcePolicy::SkinsMod, "https://skins.lapi.sh/x.jar"));
         assert!(!SourcePolicy::SkinsMod.mirrored());
+        let ours = format!("https://upd.lapi.sh/versions/files/{}.jar", "a".repeat(40));
+        assert!(ok(SourcePolicy::ExtraVersions, &ours));
+        assert_eq!(
+            SourcePolicy::for_artifact(&ours).unwrap().0,
+            SourcePolicy::ExtraVersions
+        );
+        assert!(ok(
+            SourcePolicy::ExtraVersions,
+            "https://upd.lapi.sh/versions/manifest.json"
+        ));
+        assert!(!ok(
+            SourcePolicy::ExtraVersions,
+            "https://upd.lapi.sh/skins-mod/0.1.0/a.jar"
+        ));
+        assert!(!ok(
+            SourcePolicy::ExtraVersions,
+            "https://upd.lapi.sh/v1/stable/x.json"
+        ));
+        assert!(!ok(
+            SourcePolicy::ExtraVersions,
+            "https://mirror.lapi.sh/versions/files/a.jar"
+        ));
+        assert!(!ok(
+            SourcePolicy::ExtraVersions,
+            "https://files.betacraft.uk/launcher/assets/a.jar"
+        ));
+        assert!(!ok(
+            SourcePolicy::ExtraVersions,
+            "https://upd.lapi.sh/versions/../skins-mod/0.1.0/a.jar"
+        ));
+        assert!(!ok(
+            SourcePolicy::ExtraVersions,
+            "https://upd.lapi.sh/versions/%2e%2e/v1/stable/x.json"
+        ));
+        assert!(SourcePolicy::for_artifact("https://upd.lapi.sh/skins-mod/0.1.0/a.jar").is_err());
+        assert!(!SourcePolicy::ExtraVersions.mirrored());
         assert!(SourcePolicy::for_artifact("https://github.com/x/y.jar").is_err());
         assert!(SourcePolicy::MojangArtifacts.check("not a url").is_err());
     }
@@ -691,6 +745,8 @@ mod tests {
             SourcePolicy::Stats,
             SourcePolicy::SkinsMod,
             SourcePolicy::SkinsModList,
+            SourcePolicy::MojangSkins,
+            SourcePolicy::ExtraVersions,
         ] {
             for host in policy.hosts() {
                 assert!(ALL_SOURCE_HOSTS.contains(host), "{host}");

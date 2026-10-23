@@ -175,6 +175,18 @@
   overflow-wrap: anywhere;
 }
 
+/* An April Fools update's name, and the id of an earlier build. */
+.title {
+  color: var(--color-text-2);
+}
+
+.alias {
+  color: var(--color-text-muted);
+  font-size: var(--font-size-xs);
+  font-family: var(--font-mono);
+  overflow-wrap: anywhere;
+}
+
 .tag {
   padding: 0.0625rem var(--space-2);
   border-radius: var(--radius-pill);

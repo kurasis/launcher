@@ -122,6 +122,17 @@ impl DataRoot {
         self.root.join("metadata").join("catalog.receipt.json")
     }
 
+    /// The signed list of versions Mojang's list does not have (D-073).
+    pub fn extra_versions(&self) -> PathBuf {
+        self.root.join("metadata").join("extra-versions.json")
+    }
+
+    pub fn extra_versions_receipt(&self) -> PathBuf {
+        self.root
+            .join("metadata")
+            .join("extra-versions.receipt.json")
+    }
+
     pub fn version_descriptor(&self, version: &SafeName, sha1: &Sha1) -> PathBuf {
         self.root
             .join("metadata")
