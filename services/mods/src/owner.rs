@@ -33,7 +33,7 @@ use crate::r2::{self, Bucket, Which};
 use crate::store::Store;
 
 /// The account the owner's additions are made under.
-const OWNER: &str = "owner";
+pub const OWNER: &str = "owner";
 /// Addresses one `add` takes (the workflow passes at most 32 arguments).
 const MAX_ADD: usize = 32;
 

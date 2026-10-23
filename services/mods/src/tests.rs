@@ -6786,6 +6786,23 @@ async fn the_owner_adds_projects_by_their_address() {
     let (status, project) = t.get("/v1/projects/sodium").await;
     assert_eq!(status, StatusCode::OK, "{project}");
     assert_eq!(owner.add_status().unwrap(), vec!["ready 1"]);
+    // Added again at once, it is fetched again; a player's ask is not.
+    let asked = t.sites.asked(&modrinth::project_url("sodium"));
+    owner
+        .add(&["https://modrinth.com/mod/sodium".to_owned()])
+        .unwrap();
+    t.drain().await;
+    assert_eq!(t.sites.asked(&modrinth::project_url("sodium")), asked + 1);
+    t.player(
+        1,
+        "POST",
+        "/v1/imports",
+        json!({ "input": "https://modrinth.com/mod/sodium" }),
+    )
+    .await;
+    t.drain().await;
+    assert_eq!(t.sites.asked(&modrinth::project_url("sodium")), asked + 1);
+    assert_eq!(owner.add_status().unwrap(), vec!["ready 2"]);
 }
 
 #[test]
