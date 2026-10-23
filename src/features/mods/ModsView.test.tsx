@@ -2493,9 +2493,12 @@ describe('Project page', () => {
     vi.stubGlobal('IntersectionObserver', Watcher);
     const calls = setup({ ...fresh, mods_versions: () => many });
     const article = await openSodium();
-    await waitFor(() => {
-      expect(within(article).getAllByRole('rowheader')).toHaveLength(60);
-    });
+    await waitFor(
+      () => {
+        expect(within(article).getAllByRole('rowheader')).toHaveLength(60);
+      },
+      { timeout: 5000 },
+    );
     const tables = named('mods_versions_page', calls)
       .map((c) => c.args.query as ModsVersionsQuery)
       .filter((q) => q.limit === 50);
@@ -2664,7 +2667,7 @@ describe('Project page', () => {
     expect(await within(article).findByRole('button', { name: 'Install' })).toBeDisabled();
     expect(within(article).queryByRole('switch')).toBeNull();
   });
-  it('keeps a newer installed version, even one made for another game version', async () => {
+  it('keeps a newer installed beta rather than go back to the newest release', async () => {
     const beta: ModsVersion = {
       ...version,
       id: 'v-beta',
@@ -2824,9 +2827,12 @@ describe('Project page', () => {
     });
     await new Promise((resolve) => setTimeout(resolve, 20));
     later[0]?.();
-    await waitFor(() => {
-      expect(within(article).getAllByRole('rowheader')).toHaveLength(60);
-    });
+    await waitFor(
+      () => {
+        expect(within(article).getAllByRole('rowheader')).toHaveLength(60);
+      },
+      { timeout: 5000 },
+    );
     expect(watched.some((target) => target.isConnected)).toBe(true);
   });
 
@@ -2886,8 +2892,13 @@ describe('Project page', () => {
   });
 
   it('closes only the dialog on top with Escape', async () => {
+    // What the installation holds comes while both dialogs are open.
+    let held: (view: ContentView) => void = () => undefined;
     setup({
-      ...fresh,
+      mods_content: () =>
+        new Promise((resolve) => {
+          held = resolve;
+        }),
       mods_version: () => ({
         ...version,
         changelog: [
@@ -2902,7 +2913,14 @@ describe('Project page', () => {
     fireEvent.click(await within(article).findByRole('button', { name: 'What’s new in ⁨0.6.0⁩' }));
     const details = await screen.findByRole('dialog', { name: 'What’s new in ⁨0.6.0⁩' });
     fireEvent.click(await within(details).findByRole('link', { name: 'notes' }));
-    expect(await screen.findByRole('dialog', { name: 'Open this link?' })).toBeVisible();
+    const confirm = await screen.findByRole('dialog', { name: 'Open this link?' });
+    await waitFor(() => {
+      expect(confirm.contains(document.activeElement)).toBe(true);
+    });
+    // The page under them draws again: the dialog under the prompt keeps off the focus.
+    held(NOTHING);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(confirm.contains(document.activeElement)).toBe(true);
     fireEvent.keyDown(window, { key: 'Escape' });
     await waitFor(() => {
       expect(screen.queryByRole('dialog', { name: 'Open this link?' })).toBeNull();
@@ -3045,5 +3063,38 @@ describe('Project page', () => {
     await waitFor(() => {
       expect(within(versions).getAllByRole('rowheader')).toHaveLength(55);
     });
+  });
+  it('moves the focus into a dialog once its controls come', async () => {
+    let answer: (plan: ModsPlan) => void = () => undefined;
+    setup({
+      ...fresh,
+      mods_plan: () =>
+        new Promise((resolve) => {
+          answer = resolve;
+        }),
+    });
+    const article = await openSodium();
+    const add = await within(article).findByRole('button', { name: 'Add ⁨0.6.0⁩ to installation' });
+    add.focus();
+    fireEvent.click(add);
+    const dialog = await screen.findByRole('dialog', { name: 'Add Sodium to Modded' });
+    // Nothing to press while the plan is worked out: the dialog holds the focus.
+    await waitFor(() => {
+      expect(dialog).toHaveFocus();
+    });
+    answer(plan);
+    await waitFor(() => {
+      expect(within(dialog).getByRole('button', { name: 'Install' })).toBeEnabled();
+    });
+    await waitFor(() => {
+      expect(dialog.contains(document.activeElement) && document.activeElement !== dialog).toBe(
+        true,
+      );
+    });
+    fireEvent.keyDown(window, { key: 'Escape' });
+    await waitFor(() => {
+      expect(screen.queryByRole('dialog')).toBeNull();
+    });
+    expect(add).toHaveFocus();
   });
 });

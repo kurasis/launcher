@@ -277,6 +277,11 @@
   box-shadow: var(--shadow-raised);
 }
 
+/* It holds the focus only until its controls come. */
+.dialog:focus {
+  outline: none;
+}
+
 .wide {
   width: min(100%, 48rem);
 }
