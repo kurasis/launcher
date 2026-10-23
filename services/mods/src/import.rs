@@ -672,7 +672,12 @@ pub fn start(
     let known = app.store.project_by_source_ref(source, &lookup)?;
     app.store
         .set_request(request, "importing", None, known.as_deref(), None, now())?;
-    if !queue_project(app, source, project, 0, Some(request), PROJECT_FRESH)?
+    // The owner's addition is fetched anew however lately it was.
+    let fresh = match app.store.request(request)? {
+        Some((account, _)) if account == crate::owner::OWNER => 0,
+        _ => PROJECT_FRESH,
+    };
+    if !queue_project(app, source, project, 0, Some(request), fresh)?
         && known.is_none()
         && let Some((state, error)) = app.store.job_state(&project_key(source, project))?
         && state == "failed"
