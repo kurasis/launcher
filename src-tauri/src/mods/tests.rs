@@ -785,6 +785,9 @@ impl Catalog for Fake {
                         hash: sha,
                         project_id: v.project_id.clone(),
                         version_id: v.id.clone(),
+                        title: self.projects.get(&v.project_id).map(|p| p.title.clone()),
+                        icon: None,
+                        version_number: Some(v.number.clone()),
                     })
                 })
             })
@@ -1185,6 +1188,9 @@ async fn a_mod_there_already_too_old_for_a_new_one_is_updated() {
         path: "mods/library-1.jar".to_owned(),
         project_id: id(5),
         version_id: id(50),
+        title: None,
+        icon: None,
+        version_number: None,
     }];
     let plan = content::checked_plan(
         &fake,
@@ -1345,6 +1351,9 @@ async fn a_mod_the_game_needs_is_found_to_put_in_or_update() {
         path: "mods/sodium-0.5.jar".to_owned(),
         project_id: id(1),
         version_id: id(10),
+        title: None,
+        icon: None,
+        version_number: None,
     }];
     let found = fix(empty.clone(), local.clone(), identified).await.unwrap();
     assert_eq!(found.replaces.as_deref(), Some("mods/sodium-0.5.jar"));
@@ -1894,6 +1903,56 @@ async fn the_players_files_are_recognized_by_hash() {
     assert_eq!(found.len(), 1);
     assert_eq!(found[0].path, "mods/mine.jar");
     assert_eq!(found[0].version_id, v);
+    // Named as the catalog shows it, a modpack's file as well as the player's.
+    assert_eq!(found[0].title.as_deref(), Some("A"));
+    assert_eq!(found[0].version_number.as_deref(), Some("10.0"));
+}
+
+#[test]
+fn files_found_by_hash_from_junk_are_dropped_or_cleaned() {
+    let sha1 = "ab".repeat(20);
+    let asked = [&sha1];
+    let found = Found::from(
+        &json!({
+            "hash": sha1, "projectId": id(1), "versionId": id(2),
+            "title": "Sodium\u{1b}[2J\nExtra", "iconThumb": PICTURE, "versionNumber": "0.6\n",
+        }),
+        &asked,
+    )
+    .unwrap();
+    assert_eq!(found.title.as_deref(), Some("Sodium[2J Extra"));
+    assert_eq!(found.icon.as_deref(), Some(PICTURE));
+    assert_eq!(found.version_number.as_deref(), Some("0.6"));
+    // A hidden project's file: known, not named.
+    let found = Found::from(
+        &json!({"hash": sha1, "projectId": id(1), "versionId": id(2), "title": null}),
+        &asked,
+    )
+    .unwrap();
+    assert_eq!(
+        (found.title, found.icon, found.version_number),
+        (None, None, None)
+    );
+    let found = Found::from(
+        &json!({
+            "hash": sha1, "projectId": id(1), "versionId": id(2), "title": "   ",
+            "iconThumb": "https://evil.example/i.png", "versionNumber": "x".repeat(500),
+        }),
+        &asked,
+    )
+    .unwrap();
+    assert_eq!(found.title, None);
+    assert_eq!(found.icon, None);
+    assert_eq!(found.version_number.map(|n| n.chars().count()), Some(128));
+    // Not asked for, or not the catalog's IDs.
+    for junk in [
+        json!({"hash": "cd".repeat(20), "projectId": id(1), "versionId": id(2)}),
+        json!({"hash": sha1, "projectId": "../x", "versionId": id(2)}),
+        json!({"hash": sha1, "projectId": id(1), "versionId": 7}),
+        json!(null),
+    ] {
+        assert!(Found::from(&junk, &asked).is_none(), "{junk}");
+    }
 }
 
 // ----- the game folder -----
@@ -2066,6 +2125,9 @@ fn known(path: &str, project: u8, version: u8) -> content::Identified {
         path: path.to_owned(),
         project_id: id(project),
         version_id: id(version),
+        title: None,
+        icon: None,
+        version_number: None,
     }
 }
 

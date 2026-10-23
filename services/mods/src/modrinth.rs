@@ -41,6 +41,21 @@ pub fn version_url(id: &str) -> String {
     format!("{API}/version/{}", path_part(id))
 }
 
+/// The version a file belongs to, by the file's SHA-1.
+pub fn version_file_url(sha1: &str) -> String {
+    format!("{API}/version_file/{}?algorithm=sha1", path_part(sha1))
+}
+
+/// The project of a version in Modrinth's answer; `None` for anything that
+/// is not an ID.
+pub fn version_project(value: &Value) -> Option<String> {
+    value
+        .get("project_id")?
+        .as_str()
+        .filter(|id| is_ref(id))
+        .map(str::to_owned)
+}
+
 /// Search for a name, our kinds only, five hits.
 pub fn search_url(query: &str) -> String {
     let facets = r#"[["project_type:mod","project_type:modpack","project_type:resourcepack","project_type:shader","project_type:datapack"]]"#;

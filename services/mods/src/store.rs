@@ -209,6 +209,18 @@ CREATE TABLE IF NOT EXISTS pack_file (
     origin_url TEXT NOT NULL,
     PRIMARY KEY (version_id, ord)
 );
+CREATE INDEX IF NOT EXISTS pack_file_sha1 ON pack_file(sha1);
+-- A pack's file that no catalog version has, looked up at Modrinth by its
+-- SHA-1 so that its project joins the catalog (D-066): `project` is
+-- Modrinth's ID, NULL when Modrinth does not know the file; `queued` once
+-- that project was queued.
+CREATE TABLE IF NOT EXISTS pack_lookup (
+    sha1 TEXT PRIMARY KEY,
+    project TEXT,
+    looked INTEGER NOT NULL,
+    queued INTEGER
+);
+CREATE INDEX IF NOT EXISTS pack_lookup_waiting ON pack_lookup(project) WHERE queued IS NULL;
 -- What waits for the owner's decision (lapi-mods review): a file the
 -- scanner held back (kind scan, subject its SHA-256) or a version its source
 -- took down (kind gone, subject the version).
@@ -832,6 +844,43 @@ pub struct FileRow {
     pub primary: bool,
     pub role: String,
     pub origin_url: String,
+}
+
+/// The catalog's file with this SHA-1 or SHA-256, a shown project's first.
+const CATALOG_FILE: &str =
+    "SELECT f.sha1, f.sha256, f.version_id, v.project_id, f.file_name, v.number,
+       p.status IN ('importing', 'ready'), p.title, p.icon_thumb
+     FROM version_file f
+     JOIN version v ON v.id = f.version_id
+     JOIN project p ON p.id = v.project_id
+     WHERE f.sha1 = ?1 OR f.sha256 = ?1
+     ORDER BY p.status IN ('importing', 'ready') DESC LIMIT 1";
+
+/// A file the catalog has, as `lookup` and a pack's index tell it; a hidden
+/// or removed project's title, icon and version number stay out.
+fn catalog_file(
+    q: &mut rusqlite::Statement<'_>,
+    hash: &str,
+    files: &crate::Urls,
+) -> Result<Option<serde_json::Value>> {
+    q.query_row([hash], |r| {
+        let shown: bool = r.get(6)?;
+        let thumb: Option<String> = r.get(8)?;
+        Ok(serde_json::json!({
+            "sha1": r.get::<_, Option<String>>(0)?,
+            "sha256": r.get::<_, Option<String>>(1)?,
+            "versionId": r.get::<_, String>(2)?,
+            "projectId": r.get::<_, String>(3)?,
+            "fileName": r.get::<_, String>(4)?,
+            "versionNumber": shown.then(|| r.get::<_, String>(5)).transpose()?,
+            "title": shown.then(|| r.get::<_, String>(7)).transpose()?,
+            "iconThumb": thumb
+                .filter(|_| shown)
+                .map(|t| files.image(&t, "image/webp")),
+        }))
+    })
+    .optional()
+    .map_err(sql)
 }
 
 /// A file a modpack lists.
@@ -3702,6 +3751,67 @@ impl Store {
             .map_err(sql)
     }
 
+    /// Up to `limit` packs' mods, resource packs and shaders that no catalog
+    /// version has and that were not looked up since `before`: each SHA-1
+    /// once, with an address it came from (Modrinth's first).
+    pub fn pack_files_unknown(&self, before: i64, limit: usize) -> Result<Vec<(String, String)>> {
+        let db = self.db();
+        let mut q = db
+            .prepare(
+                "SELECT p.sha1, max(p.origin_url LIKE 'https://cdn.modrinth.com/%'), p.origin_url
+                 FROM pack_file p
+                 WHERE p.sha1 != ''
+                   AND (p.path LIKE 'mods/%' OR p.path LIKE 'resourcepacks/%' OR p.path LIKE 'shaderpacks/%')
+                   AND NOT EXISTS (SELECT 1 FROM version_file f WHERE f.sha1 = p.sha1)
+                   AND NOT EXISTS (SELECT 1 FROM pack_lookup l WHERE l.sha1 = p.sha1 AND l.looked > ?1)
+                 GROUP BY p.sha1 LIMIT ?2",
+            )
+            .map_err(sql)?;
+        q.query_map(params![before, limit as i64], |r| {
+            Ok((r.get(0)?, r.get(2)?))
+        })
+        .map_err(sql)?
+        .collect::<std::result::Result<_, _>>()
+        .map_err(sql)
+    }
+
+    /// What Modrinth said of a pack's file: its project, or none known.
+    pub fn pack_looked_up(&self, sha1: &str, project: Option<&str>, now: i64) -> Result<()> {
+        self.db()
+            .execute(
+                "INSERT OR REPLACE INTO pack_lookup (sha1, project, looked, queued)
+                 VALUES (?1, ?2, ?3, NULL)",
+                params![sha1, project, now],
+            )
+            .map(|_| ())
+            .map_err(sql)
+    }
+
+    /// Modrinth projects of packs' files not queued yet, up to `limit`.
+    pub fn pack_projects_waiting(&self, limit: usize) -> Result<Vec<String>> {
+        let db = self.db();
+        let mut q = db
+            .prepare(
+                "SELECT DISTINCT project FROM pack_lookup
+                 WHERE project IS NOT NULL AND queued IS NULL LIMIT ?1",
+            )
+            .map_err(sql)?;
+        q.query_map([limit as i64], |r| r.get(0))
+            .map_err(sql)?
+            .collect::<std::result::Result<_, _>>()
+            .map_err(sql)
+    }
+
+    pub fn pack_project_queued(&self, project: &str, now: i64) -> Result<()> {
+        self.db()
+            .execute(
+                "UPDATE pack_lookup SET queued = ?2 WHERE project = ?1 AND queued IS NULL",
+                params![project, now],
+            )
+            .map(|_| ())
+            .map_err(sql)
+    }
+
     /// A modpack version's index with our addresses of its files, once read.
     pub fn pack_json(
         &self,
@@ -3733,12 +3843,12 @@ impl Store {
         };
         let mut q = db
             .prepare(
-                "SELECT p.path, p.size, p.sha256, p.optional, b.state, b.copy FROM pack_file p
+                "SELECT p.path, p.size, p.sha256, p.optional, b.state, b.copy, p.sha1 FROM pack_file p
                  LEFT JOIN blob b ON b.sha256 = p.sha256
                  WHERE p.version_id = ?1 ORDER BY p.ord",
             )
             .map_err(sql)?;
-        let list: Vec<serde_json::Value> = q
+        let rows: Vec<(serde_json::Value, String)> = q
             .query_map([version], |r| {
                 let path: String = r.get(0)?;
                 let sha256: Option<String> = r.get(2)?;
@@ -3748,7 +3858,7 @@ impl Store {
                     .is_some_and(|s| s != "stored");
                 let name = path.rsplit('/').next().unwrap_or_default().to_owned();
                 let public = r.get::<_, Option<String>>(5)?.as_deref() == Some("public");
-                Ok(serde_json::json!({
+                let file = serde_json::json!({
                     "path": path,
                     "size": r.get::<_, i64>(1)?,
                     "sha256": sha256,
@@ -3756,11 +3866,34 @@ impl Store {
                     "url": sha256.as_deref().filter(|_| !held).map(|s| files.served(s, &name, public)),
                     "held": held,
                     "optional": r.get::<_, bool>(3)?,
-                }))
+                });
+                Ok((file, r.get::<_, String>(6)?))
             })
             .map_err(sql)?
             .collect::<std::result::Result<_, _>>()
             .map_err(sql)?;
+        // What the catalog knows of each: its project and version, with the
+        // title, icon and number a shown project has.
+        let mut known = db.prepare(CATALOG_FILE).map_err(sql)?;
+        let mut list = Vec::with_capacity(rows.len());
+        for (mut file, sha1) in rows {
+            let found = match sha1.as_str() {
+                "" => None,
+                sha1 => catalog_file(&mut known, sha1, files)?,
+            };
+            for key in [
+                "projectId",
+                "versionId",
+                "title",
+                "iconThumb",
+                "versionNumber",
+            ] {
+                file[key] = found
+                    .as_ref()
+                    .map_or(serde_json::Value::Null, |f| f[key].clone());
+            }
+            list.push(file);
+        }
         let total = list.len();
         // A CurseForge pack's files not found yet are counted, not listed.
         let list: Vec<serde_json::Value> = list.into_iter().filter(|f| f["path"] != "").collect();
@@ -4799,32 +4932,16 @@ impl Store {
         Ok(removed > 0)
     }
 
-    /// Kept files by SHA-1 or SHA-256, with their version and project.
-    pub fn lookup(&self, hashes: &[String]) -> Result<Vec<serde_json::Value>> {
+    /// Kept files by SHA-1 or SHA-256, with their version and project, and
+    /// the project's title and icon and the version's number while the
+    /// project is shown.
+    pub fn lookup(&self, hashes: &[String], files: &crate::Urls) -> Result<Vec<serde_json::Value>> {
         let db = self.db();
+        let mut q = db.prepare(CATALOG_FILE).map_err(sql)?;
         let mut out = Vec::new();
-        let mut q = db
-            .prepare(
-                "SELECT f.sha1, f.sha256, f.version_id, v.project_id, f.file_name FROM version_file f
-                 JOIN version v ON v.id = f.version_id
-                 WHERE f.sha1 = ?1 OR f.sha256 = ?1 LIMIT 1",
-            )
-            .map_err(sql)?;
         for hash in hashes {
-            if let Some(found) = q
-                .query_row([hash], |r| {
-                    Ok(serde_json::json!({
-                        "hash": hash,
-                        "sha1": r.get::<_, Option<String>>(0)?,
-                        "sha256": r.get::<_, Option<String>>(1)?,
-                        "versionId": r.get::<_, String>(2)?,
-                        "projectId": r.get::<_, String>(3)?,
-                        "fileName": r.get::<_, String>(4)?,
-                    }))
-                })
-                .optional()
-                .map_err(sql)?
-            {
+            if let Some(mut found) = catalog_file(&mut q, hash, files)? {
+                found["hash"] = hash.as_str().into();
                 out.push(found);
             }
         }

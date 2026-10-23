@@ -600,6 +600,19 @@ fn serve() -> Result<(), String> {
                 tokio::time::sleep(Duration::from_secs(60)).await;
             }
         });
+        // The projects of packs' mods the catalog lacks, a few at a time
+        // while the queue is nearly empty.
+        let packed = Arc::clone(&app);
+        tokio::spawn(async move {
+            loop {
+                tokio::time::sleep(Duration::from_secs(60)).await;
+                match import::pack_projects(&packed).await {
+                    Ok(0) => {}
+                    Ok(n) => eprintln!("lapi-mods: {n} projects of packs' files queued"),
+                    Err(e) => eprintln!("lapi-mods: adding packs' projects failed: {e}"),
+                }
+            }
+        });
         // Kept archives scanned under older rules, a few at a time.
         let scanning = Arc::clone(&app);
         tokio::spawn(async move {

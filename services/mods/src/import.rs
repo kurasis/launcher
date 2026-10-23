@@ -342,6 +342,55 @@ pub fn seed(app: &App, missing: &mut Vec<String>) -> Result<usize, String> {
     Ok(queued)
 }
 
+// ----- the mods of packs -----
+
+/// Packs' files looked up at Modrinth at a time, and how long an answer holds.
+pub const PACK_LOOKUPS_AT_ONCE: usize = 10;
+pub const PACK_LOOKUP_AGAIN: i64 = 30 * 86_400;
+
+/// Adds the projects of packs' mods, resource packs and shaders that the
+/// catalog lacks, so each has a page, a title and an icon (D-066). A file's
+/// project is read from its Modrinth address, else Modrinth is asked by its
+/// SHA-1; one Modrinth does not know (a CurseForge-only mod) is asked again
+/// after `PACK_LOOKUP_AGAIN`. Like the most downloaded, a few at a time and
+/// only while the queue is nearly empty. Returns how many were queued.
+pub async fn pack_projects(app: &App) -> Result<usize, String> {
+    if app.store.jobs_due(now())? >= SEED_WHEN_BELOW {
+        return Ok(0);
+    }
+    let unknown = app
+        .store
+        .pack_files_unknown(now() - PACK_LOOKUP_AGAIN, PACK_LOOKUPS_AT_ONCE)?;
+    for (sha1, url) in unknown {
+        let project = match input::parse(&url) {
+            Some(Input::ModrinthFile { project, .. }) => Some(project),
+            _ => match app.client.json(&modrinth::version_file_url(&sha1)).await {
+                Ok(found) => found.as_ref().and_then(modrinth::version_project),
+                // Not reached: asked again next time.
+                Err(_) => break,
+            },
+        };
+        app.store.pack_looked_up(&sha1, project.as_deref(), now())?;
+    }
+    let mut queued = 0;
+    for project in app.store.pack_projects_waiting(100)? {
+        if queued >= SEED_AT_ONCE {
+            break;
+        }
+        // One the owner removed stays removed: it is known too.
+        if app
+            .store
+            .project_by_source(modrinth::SOURCE, &project)?
+            .is_none()
+            && queue_project(app, modrinth::SOURCE, &project, 0, None, IDLE_FRESH)?
+        {
+            queued += 1;
+        }
+        app.store.pack_project_queued(&project, now())?;
+    }
+    Ok(queued)
+}
+
 /// Queues a check of a project the owner added (external.rs) at once; run
 /// by the owner's commands, which have the store alone.
 pub fn queue_external(store: &crate::store::Store, source_id: &str) -> Result<bool, String> {
