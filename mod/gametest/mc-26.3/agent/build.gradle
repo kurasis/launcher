@@ -14,10 +14,10 @@ java {
     toolchain { languageVersion = JavaLanguageVersion.of(25) }
 }
 
+// Also the bot for the newest snapshot (gametest/mc-snapshot/agent).
 sourceSets.main {
-    java.srcDir "${rootDir}/gametest/core/src/main/java"
-    java.srcDir "${projectDir}/../common/src/main/java"
-    java.srcDir "${rootDir}/gametest/agent/src/main/java"
+    java.srcDirs = ["${rootDir}/gametest/core/src/main/java", "${rootDir}/gametest/mc-26.3/common/src/main/java",
+                    "${rootDir}/gametest/agent/src/main/java"]
     java.exclude 'app/launcher/gametest/mixin/**'
 }
 

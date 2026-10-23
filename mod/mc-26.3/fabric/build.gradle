@@ -2,8 +2,10 @@ plugins {
     id 'net.fabricmc.fabric-loom' version '1.19.1'
 }
 
+// Also built for the newest snapshot (mc-snapshot/fabric): its gradle.properties name the
+// game version, the band (`band`) and the releases the jar accepts (`fabric_range`).
 base {
-    archivesName = "launcherskins-fabric-26.1-26.3"
+    archivesName = "launcherskins-fabric-${band}"
 }
 
 java {
@@ -12,9 +14,20 @@ java {
 
 // The core and the game layer shared by every loader of this version are compiled in.
 sourceSets.main {
-    java.srcDir "${rootDir}/core/src/main/java"
-    java.srcDir "${projectDir}/../common/src/main/java"
-    resources.srcDir "${projectDir}/../common/src/main/resources"
+    java.srcDirs = ["${rootDir}/core/src/main/java", "${rootDir}/mc-26.3/common/src/main/java",
+                    "${rootDir}/mc-26.3/fabric/src/main/java"]
+    resources.srcDirs = ["${rootDir}/mc-26.3/common/src/main/resources",
+                         "${rootDir}/mc-26.3/fabric/src/main/resources"]
+}
+
+// The newest snapshot (mc-snapshot) uses its own copy of each class in mc-snapshot/common
+// instead of mc-26.3's, where its game code differs from 26.3's.
+def ownLayer = file("${projectDir}/../common/src/main/java")
+def sharedLayer = file("${rootDir}/mc-26.3/common/src/main/java")
+if (ownLayer != sharedLayer && ownLayer.isDirectory()) {
+    def replaced = fileTree(ownLayer).collect { ownLayer.toPath().relativize(it.toPath()).toString().replace('\\', '/') } as Set
+    sourceSets.main.java.srcDir ownLayer
+    sourceSets.main.java.exclude { e -> e.file.path.startsWith(sharedLayer.path) && replaced.contains(e.relativePath.pathString) }
 }
 
 dependencies {
@@ -29,8 +42,9 @@ tasks.withType(JavaCompile).configureEach {
 
 processResources {
     inputs.property 'version', project.version
+    inputs.property 'minecraft', fabric_range
     filesMatching('fabric.mod.json') {
-        expand version: project.version
+        expand version: project.version, minecraft: fabric_range
     }
 }
 

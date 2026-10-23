@@ -800,11 +800,32 @@ fn builds_are_found_by_version_and_loader() {
     }
 }
 
-/// CI builds the signed list from `mod/builds.json`: it names the same builds.
+/// CI builds the signed list from `mod/builds.json`: it names the same builds,
+/// unless `mod/VERSION` is already the next release, whose builds the file then
+/// describes until that release is pinned here.
 #[test]
 fn the_builds_file_for_the_signed_list_matches_the_builds() {
     let file: Vec<serde_json::Value> =
         serde_json::from_str(include_str!("../../../mod/builds.json")).unwrap();
+    if include_str!("../../../mod/VERSION").trim() != MOD_VERSION {
+        // Each game version still has one build per target, under a plain label.
+        let mut seen = HashSet::new();
+        for build in &file {
+            let target = build["target"].as_str().unwrap();
+            assert!(["fabric", "neoforge", "forge", "agent"].contains(&target));
+            let label = build["label"].as_str().unwrap();
+            assert!(
+                is_ours(&format!("launcherskins-{target}-{label}-0.0.0.jar")),
+                "{label}"
+            );
+            for game in build["games"].as_array().unwrap() {
+                let game = game.as_str().unwrap();
+                assert!(game.len() <= 16, "{game}");
+                assert!(seen.insert((target, game)), "{target} {game} twice");
+            }
+        }
+        return;
+    }
     let ours: Vec<serde_json::Value> = BUILDS
         .iter()
         .map(|b| {

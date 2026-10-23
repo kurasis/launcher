@@ -26,7 +26,7 @@ on:
   workflow_dispatch:
     inputs:
       versions:
-        description: Game versions (comma-separated; 26.3, 1.21.11, 1.21.10, 1.21.8, 1.21.4, 1.21.1, 1.20.6, 1.20.4, 1.20.1, 1.19.4, 1.19.2, 1.18.2, 1.17.1, 1.16.5, 1.15.2, 1.14.4, 1.12.2, 1.8.9, 1.7.10)
+        description: Game versions (comma-separated; 26.4-snapshot-5, 26.3, 1.21.11, 1.21.10, 1.21.8, 1.21.4, 1.21.1, 1.20.6, 1.20.4, 1.20.1, 1.19.4, 1.19.2, 1.18.2, 1.17.1, 1.16.5, 1.15.2, 1.14.4, 1.12.2, 1.8.9, 1.7.10)
         default: 26.3,1.21.11,1.21.1,1.20.1,1.12.2
       loaders:
         description: Loaders (comma-separated; vanilla, fabric, quilt, neoforge, forge)
@@ -78,11 +78,13 @@ jobs:
           MINUTES: ${{ inputs.minutes || '5' }}
           SKIN: ${{ inputs.skin || 'rotate' }}
           NEWEST: ${{ github.event_name == 'schedule' || inputs.newest }}
+          ROTATE: ${{ github.event_name == 'schedule' }}
         run: |
           python3 - <<'EOF'
           import json, os, sys
           allowed = {
-              "VERSIONS": ["26.3", "1.21.11", "1.21.10", "1.21.8", "1.21.4", "1.21.1", "1.20.6", "1.20.4",
+              # The newest snapshot (mod/mc-snapshot) is the first.
+              "VERSIONS": ["26.4-snapshot-5", "26.3", "1.21.11", "1.21.10", "1.21.8", "1.21.4", "1.21.1", "1.20.6", "1.20.4",
                            "1.20.1", "1.19.4", "1.19.2", "1.18.2", "1.17.1", "1.16.5",
                            "1.15.2", "1.14.4", "1.12.2", "1.8.9", "1.7.10"],
               "LOADERS": ["vanilla", "fabric", "quilt", "neoforge", "forge"],
@@ -108,7 +110,11 @@ jobs:
           # 1.12.2 and older are Forge only, 1.14.4 to 1.20.1 have no NeoForge build; the game with
           # no loader plays without mods.
           legacy = ["1.16.5", "1.17.1", "1.18.2", "1.19.2", "1.19.4", "1.20.1"]
+          snapshot = allowed["VERSIONS"][0]
           def playable(version, loader, mods):
+              if version == snapshot:
+                  # Snapshots have Fabric only, and no mod set.
+                  return loader in ("vanilla", "fabric") and mods == "none"
               if version in ("1.12.2", "1.8.9", "1.7.10"):
                   return loader == "forge"
               if version in legacy + ["1.14.4", "1.15.2"] and loader == "neoforge":
@@ -118,6 +124,8 @@ jobs:
           bands = {"1.21.1": "mc-1.21.1", "1.21.4": "mc-1.21.2-1.21.4", "1.21.8": "mc-1.21.5-1.21.8",
                    "1.21.10": "mc-1.21.9-1.21.10", "1.21.11": "mc-1.21.11"}
           def folders(version):
+              if version == snapshot:
+                  return ["mc-snapshot", "gametest:mc-snapshot"]
               if version in ("26.3", "1.12.2", "1.8.9", "1.7.10"):
                   return [f"mc-{version}", f"gametest:mc-{version}"]
               if version in legacy:
@@ -140,11 +148,20 @@ jobs:
                           f"agents:{version}"] + [
                       f"gametest:mc-1.20.2-1.20.6:{loader}:{version}" for loader in ("fabric", "forge", "neoforge", "agent")]
               return [bands[version], f"agents:{version}", f"gametest:mc-{version}"]
+          # Each night also plays three of the other versions, in turn, without the mod set:
+          # every version with a bot is played at least once in five nights.
+          rotating = []
+          if os.environ["ROTATE"] == "true":
+              import datetime
+              others = [v for v in allowed["VERSIONS"] if v not in picked["VERSIONS"]]
+              start = datetime.date.today().toordinal() * 3
+              rotating = [others[(start + i) % len(others)] for i in range(min(3, len(others)))]
+              picked["VERSIONS"] += rotating
           scenarios = []
           for version in picked["VERSIONS"]:
               for loader in picked["LOADERS"]:
                   for mods in picked["MODS"]:
-                      if not playable(version, loader, mods):
+                      if not playable(version, loader, mods) or (version in rotating and mods != "none"):
                           continue
                       s = skins[len(scenarios) % len(skins)] if skin == "rotate" else skin
                       scenarios.append({"version": version, "loader": loader, "mods": mods, "skin": s,

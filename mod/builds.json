@@ -1,4 +1,6 @@
 [
+  { "target": "fabric", "label": "26.4-snapshot-5", "games": ["26.4-snapshot-5"] },
+  { "target": "agent", "label": "26.4-snapshot-5", "games": ["26.4-snapshot-5"] },
   {
     "target": "fabric",
     "label": "26.1-26.3",
@@ -58,11 +60,15 @@
     "label": "1.20.2-1.21.1",
     "games": ["1.20.2", "1.20.3", "1.20.4", "1.20.5", "1.20.6", "1.21", "1.21.1"]
   },
-  { "target": "neoforge", "label": "1.20.6-1.21.1", "games": ["1.20.6", "1.21", "1.21.1"] },
+  {
+    "target": "neoforge",
+    "label": "1.20.5-1.21.1",
+    "games": ["1.20.5", "1.20.6", "1.21", "1.21.1"]
+  },
   { "target": "forge", "label": "1.21.1", "games": ["1.21.1"] },
   { "target": "agent", "label": "1.21.1", "games": ["1.21.1"] },
   { "target": "agent", "label": "1.21", "games": ["1.21"] },
-  { "target": "forge", "label": "1.20.6", "games": ["1.20.6"] },
+  { "target": "forge", "label": "1.20.6-1.21", "games": ["1.20.6", "1.21"] },
   { "target": "agent", "label": "1.20.6", "games": ["1.20.6"] },
   { "target": "agent", "label": "1.20.5", "games": ["1.20.5"] },
   { "target": "neoforge", "label": "1.20.2-1.20.4", "games": ["1.20.2", "1.20.3", "1.20.4"] },
@@ -131,13 +137,22 @@
   { "target": "agent", "label": "1.16.2", "games": ["1.16.2"] },
   { "target": "agent", "label": "1.16.1", "games": ["1.16.1"] },
   { "target": "agent", "label": "1.16", "games": ["1.16"] },
-  { "target": "forge", "label": "1.15.2", "games": ["1.15.2"] },
+  {
+    "target": "forge",
+    "label": "1.15.2-1.16.4",
+    "games": ["1.15.2", "1.16.1", "1.16.2", "1.16.3", "1.16.4"]
+  },
   { "target": "agent", "label": "1.15.2", "games": ["1.15.2"] },
   { "target": "fabric", "label": "1.15-1.15.1", "games": ["1.15", "1.15.1"] },
+  { "target": "forge", "label": "1.15-1.15.1", "games": ["1.15", "1.15.1"] },
   { "target": "agent", "label": "1.15.1", "games": ["1.15.1"] },
   { "target": "agent", "label": "1.15", "games": ["1.15"] },
-  { "target": "fabric", "label": "1.14.4", "games": ["1.14.4"] },
-  { "target": "forge", "label": "1.14.4", "games": ["1.14.4"] },
+  {
+    "target": "fabric",
+    "label": "1.14-1.14.4",
+    "games": ["1.14", "1.14.1", "1.14.2", "1.14.3", "1.14.4"]
+  },
+  { "target": "forge", "label": "1.14.2-1.14.4", "games": ["1.14.2", "1.14.3", "1.14.4"] },
   { "target": "agent", "label": "1.14.4", "games": ["1.14.4"] },
   { "target": "forge", "label": "1.12.2", "games": ["1.12.2"] },
   { "target": "forge", "label": "1.8.9", "games": ["1.8.9"] },

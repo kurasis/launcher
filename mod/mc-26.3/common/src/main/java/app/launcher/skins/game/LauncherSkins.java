@@ -16,7 +16,6 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.renderer.texture.DynamicTexture;
 import net.minecraft.core.ClientAsset;
 import net.minecraft.resources.Identifier;
 import net.minecraft.world.entity.player.PlayerModelType;
@@ -170,7 +169,7 @@ public final class LauncherSkins implements Skins.Sink {
                 }
                 frames[f] = Identifier.fromNamespaceAndPath(ID,
                         texture.kind.name().toLowerCase(java.util.Locale.ROOT) + "/" + texture.hash + "/" + f);
-                Minecraft.getInstance().getTextureManager().register(frames[f], new DynamicTexture(frames[f]::toString, frame));
+                Textures.register(frames[f], frame);
             }
             return frames;
         } catch (IOException | RuntimeException e) {
