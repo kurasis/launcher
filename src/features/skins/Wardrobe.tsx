@@ -44,7 +44,7 @@ import {
   trialPieces,
   uploadsLine,
   wardrobeName,
-} from './wardrobe';
+} from './closet';
 
 /** The largest file the core imports (a GIF or APNG before it becomes a strip). */
 const DROP_MAX_BYTES = 8 * 1024 * 1024;

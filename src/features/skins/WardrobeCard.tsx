@@ -7,7 +7,7 @@ import { type SkinKind, type WornTexture, WARDROBE_NAME_CHARS } from '../../lib/
 import { strings } from '../../lib/strings';
 import { SkinPreview } from './SkinPreview';
 import styles from './Skins.module.css';
-import { firstChars, textureOf, wardrobeName } from './wardrobe';
+import { firstChars, textureOf, wardrobeName } from './closet';
 
 const w = strings.accounts.skins.wardrobe;
 

@@ -1,6 +1,6 @@
 import type { ImportNote, PickedTexture } from '../../lib/contracts';
 import { DEFAULT_FRAME_MS, MAX_FRAMES, type Texture, isPngDataUrl, parseFrameMs } from './textures';
-import { nameFromFile } from './wardrobe';
+import { nameFromFile } from './closet';
 
 /** A picked file being looked at before it is worn. */
 export interface Draft {

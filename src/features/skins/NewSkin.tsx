@@ -19,7 +19,7 @@ import { type Outfit, SkinStage } from './SkinStage';
 import styles from './Skins.module.css';
 import { FRAME_MS_MAX, FRAME_MS_MIN, frameHeight, parseFrameMs } from './textures';
 import { Toggle } from './Toggle';
-import { firstChars, uploadsLine, wardrobeName } from './wardrobe';
+import { firstChars, uploadsLine, wardrobeName } from './closet';
 
 /** Largest file per kind, as the service takes it. */
 const MAX_BYTES = { skin: 2 * 1024 * 1024, cape: 1024 * 1024 } as const;

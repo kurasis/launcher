@@ -22,7 +22,7 @@ import {
   trialPieces,
   uploadsLine,
   wardrobeName,
-} from './wardrobe';
+} from './closet';
 
 const id = (n: number) => n.toString(16).padStart(32, '0');
 const hash = (n: number) => n.toString(16).padStart(64, '0');
