@@ -1,6 +1,6 @@
 //! Launch preparation for older versions (D-035): native jars extracted into
 //! the run's natives directory, asset files laid out by name for the legacy
-//! asset schemes, and the launcher's tweaker for games before 1.6. Modern
+//! asset schemes, and the launcher's tweakers for games before 1.6. Modern
 //! versions need none of them.
 
 use std::fs;
@@ -123,17 +123,49 @@ const LAUNCHWRAPPER_1_5: &str = "net.minecraft:launchwrapper:1.5";
 /// `.minecraft` folder for its options, saves and statistics first. This one sets
 /// the folder before `main` runs.
 pub const LEGACY_TWEAKER_CLASS: &str = "app.launcher.legacy.LegacyTweaker";
+/// Mojang's tweaker for the oldest games, Classic to Alpha 1.0 (launchwrapper 1.5
+/// and 1.6).
+pub const ALPHA_VANILLA_TWEAKER: &str = "net.minecraft.launchwrapper.AlphaVanillaTweaker";
+/// The launcher's tweaker in its place (`java/legacy-tweaker`): launchwrapper ends
+/// these games with code 1 and without a word when the player closes their window,
+/// the code a failed start ends with too; this one prints
+/// [`super::crash::CLOSED_BY_PLAYER`] first.
+pub const ALPHA_TWEAKER_CLASS: &str = "app.launcher.legacy.AlphaTweaker";
 const LEGACY_TWEAKER_JAR: &[u8] = include_bytes!("../../../java/legacy-tweaker/legacy-tweaker.jar");
 
-/// A vanilla game started by launchwrapper 1.5 with Mojang's default tweaker.
-pub fn needs_legacy_tweaker(plan: &GamePlan) -> bool {
-    plan.loader.is_none()
-        && plan.main_class == super::service::LAUNCHWRAPPER_MAIN_CLASS
-        && plan
+/// What the launcher's tweaker does for a game.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LegacyTweaker {
+    /// Launchwrapper 1.5 with Mojang's default tweaker: [`LEGACY_TWEAKER_CLASS`] is
+    /// named with `--tweakClass`.
+    GameFolder,
+    /// Mojang's [`ALPHA_VANILLA_TWEAKER`]: [`ALPHA_TWEAKER_CLASS`] takes its place.
+    WindowClose,
+}
+
+/// The launcher's tweaker a vanilla game started by launchwrapper takes, if any. A
+/// descriptor that names a tweaker of its own keeps it.
+pub fn legacy_tweaker(plan: &GamePlan) -> Option<LegacyTweaker> {
+    if plan.loader.is_some() || plan.main_class != super::service::LAUNCHWRAPPER_MAIN_CLASS {
+        return None;
+    }
+    let named: Vec<&str> = plan
+        .game_arguments
+        .windows(2)
+        .filter(|pair| pair[0] == "--tweakClass")
+        .map(|pair| pair[1].as_str())
+        .collect();
+    match named.as_slice() {
+        [] if plan
             .libraries
             .iter()
-            .any(|l| l.provenance.as_deref() == Some(LAUNCHWRAPPER_1_5))
-        && !plan.game_arguments.iter().any(|a| a == "--tweakClass")
+            .any(|l| l.provenance.as_deref() == Some(LAUNCHWRAPPER_1_5)) =>
+        {
+            Some(LegacyTweaker::GameFolder)
+        }
+        [ALPHA_VANILLA_TWEAKER] => Some(LegacyTweaker::WindowClose),
+        _ => None,
+    }
 }
 
 /// Writes the tweaker jar into the shared files, named by its content so a game
@@ -207,8 +239,10 @@ mod tests {
         assert!(path.starts_with(dir.path().join("shared").join("launcher")));
         assert_eq!(fs::read(&path).unwrap(), LEGACY_TWEAKER_JAR);
         let archive = zip::ZipArchive::new(fs::File::open(&path).unwrap()).unwrap();
-        let class = format!("{}.class", LEGACY_TWEAKER_CLASS.replace('.', "/"));
-        assert!(archive.file_names().any(|name| name == class));
+        for tweaker in [LEGACY_TWEAKER_CLASS, ALPHA_TWEAKER_CLASS] {
+            let class = format!("{}.class", tweaker.replace('.', "/"));
+            assert!(archive.file_names().any(|name| name == class));
+        }
         // A damaged copy is replaced; the name stays.
         fs::write(&path, b"broken").unwrap();
         assert_eq!(legacy_tweaker_jar(&root).unwrap(), path);

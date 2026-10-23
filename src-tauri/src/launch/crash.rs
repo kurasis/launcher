@@ -221,6 +221,11 @@ impl ExitInfo {
 /// game with code 1 when the player closes the window.
 const CLOSED_BY_WINDOW: &str = "Someone is closing me!";
 
+/// What the launcher's tweaker for the oldest games, Classic to Alpha 1.0, prints
+/// when the player closes the window (`java/legacy-tweaker`): launchwrapper then
+/// ends the game with code 1 without a word.
+pub const CLOSED_BY_PLAYER: &str = "Launcher: the game window was closed";
+
 /// Whether a game before 1.6 ended because the player closed its window: it
 /// exits with code 1 then, which is no failure.
 pub fn closed_by_its_window(exit: ExitInfo, output: &[String]) -> bool {
@@ -231,7 +236,7 @@ pub fn closed_by_its_window(exit: ExitInfo, output: &[String]) -> bool {
             .rev()
             .filter(|line| !line.trim().is_empty())
             .take(10)
-            .any(|line| line.trim() == CLOSED_BY_WINDOW)
+            .any(|line| matches!(line.trim(), CLOSED_BY_WINDOW | CLOSED_BY_PLAYER))
 }
 
 /// A file the game wrote during the run.

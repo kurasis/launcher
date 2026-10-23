@@ -1020,9 +1020,12 @@ try {
       } else {
         $result.exitCode = $game.Process.ExitCode
         # Before 1.6 the game's window listener prints "Someone is closing me!" and
-        # exits with code 1 when the window is closed: that is the player's close.
+        # exits with code 1 when the window is closed: that is the player's close. The
+        # oldest games (Classic to Alpha 1.0) exit so without a word; the launcher's
+        # tweaker prints its own line for them.
         Start-Sleep -Seconds 2
-        $windowClosed = $result.exitCode -eq 1 -and $runLog -and (Log-Text $runLog).Contains('Someone is closing me!')
+        $runText = if ($runLog) { Log-Text $runLog } else { '' }
+        $windowClosed = $result.exitCode -eq 1 -and ($runText.Contains('Someone is closing me!') -or $runText.Contains('Launcher: the game window was closed'))
         $result.exit = if ($result.exitCode -eq 0 -or $windowClosed) { 'ok' } else { 'failed' }
       }
       $crashes = @(Get-ChildItem (Join-Path $gameDir 'crash-reports') -ErrorAction SilentlyContinue)

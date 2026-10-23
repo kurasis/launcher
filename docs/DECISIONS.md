@@ -703,6 +703,17 @@ replaces it), `superseded`.
   anything unexpected leaves Mojang's behaviour. The jar is written to
   `shared/launcher/legacy-tweaker-<sha256 prefix>.jar`, added to the classpath and named
   with `--tweakClass`. A descriptor that names its own tweaker keeps it.
+- **Amendment (2026-10-23, special versions on Windows):** the oldest games, Classic
+  to Alpha 1.0 (Mojang's `AlphaVanillaTweaker`, launchwrapper 1.5 and 1.6; 7 Mojang
+  versions and 79 of the special ones, D-073), run in launchwrapper's own frame, which
+  ends the game with code 1 and without a word when the player closes the window, the
+  code a failed start ends with too: the launcher showed every such close as a failure.
+  The same jar has `app.launcher.legacy.AlphaTweaker`, Mojang's tweaker with a toolkit
+  listener (it hears the window's close before the frame's own listener) that prints
+  `Launcher: the game window was closed`; it takes the place of `AlphaVanillaTweaker`
+  in the arguments, and code 1 after that line within the output's last ten lines is
+  a normal end, as after "Someone is closing me!". CI starts a stand-in game in both
+  launchwrapper versions under Xvfb, closes its window and checks code and line.
 
 ## D-036 — Mojang Java runtimes and one Settings screen
 

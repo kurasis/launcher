@@ -58,9 +58,9 @@ pub struct LaunchInputs<'a> {
     /// The skins API address of a test build (`-Dlauncherskins.api`); `None`
     /// leaves the mod's own default.
     pub skins_api: Option<&'a str>,
-    /// The launcher's tweaker jar for a game before 1.6
-    /// ([`super::legacy::needs_legacy_tweaker`]): added to the classpath and named
-    /// with `--tweakClass`.
+    /// The launcher's tweaker jar for a game before 1.6 that takes one
+    /// ([`super::legacy::legacy_tweaker`]): added to the classpath, its class named
+    /// with `--tweakClass` or in place of Mojang's `AlphaVanillaTweaker`.
     pub legacy_tweaker: Option<&'a Path>,
 }
 
@@ -274,8 +274,22 @@ pub fn compile(inputs: &LaunchInputs<'_>) -> LauncherResult<CompiledLaunch> {
         .map(|template| substitute(template, &values))
         .collect::<LauncherResult<Vec<_>>>()?;
     if inputs.legacy_tweaker.is_some() {
-        game_args.push("--tweakClass".to_owned());
-        game_args.push(super::legacy::LEGACY_TWEAKER_CLASS.to_owned());
+        use super::legacy::{ALPHA_TWEAKER_CLASS, ALPHA_VANILLA_TWEAKER, LegacyTweaker};
+        match super::legacy::legacy_tweaker(plan) {
+            Some(LegacyTweaker::GameFolder) => {
+                game_args.push("--tweakClass".to_owned());
+                game_args.push(super::legacy::LEGACY_TWEAKER_CLASS.to_owned());
+            }
+            Some(LegacyTweaker::WindowClose) => {
+                if let Some(at) = game_args
+                    .windows(2)
+                    .position(|pair| pair[0] == "--tweakClass" && pair[1] == ALPHA_VANILLA_TWEAKER)
+                {
+                    ALPHA_TWEAKER_CLASS.clone_into(&mut game_args[at + 1]);
+                }
+            }
+            None => {}
+        }
     }
     // Plans are evaluated with `is_demo_user` false; both qualified descriptors
     // map that feature to exactly this argument. Mod loaders pass it on to the
