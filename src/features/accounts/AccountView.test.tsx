@@ -1,7 +1,13 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { mockIPC } from '@tauri-apps/api/mocks';
 import { describe, expect, it, vi } from 'vitest';
-import type { AccountSummary, AppSnapshot, MicrosoftAccount } from '../../lib/contracts';
+import type {
+  AccountState,
+  AccountSummary,
+  AppSnapshot,
+  LauncherError,
+  MicrosoftAccount,
+} from '../../lib/contracts';
 import { snapshotFixture } from '../../test/fixtures';
 import { AccountView } from './AccountView';
 
@@ -328,6 +334,10 @@ describe('AccountView', () => {
   it('says what offline means for profiles only when it is chosen or closed', () => {
     setup({ fullGameAllowed: true, notokenProfiles: [{ id: 'p-0', name: 'Tester' }] });
     const panel = screen.getByRole('region', { name: 'Profiles without an account' });
+    // The description already says what the demo is: no second line about it.
+    expect(
+      within(panel).queryByText("Minecraft's demo: five in-game days, no multiplayer."),
+    ).toBeNull();
     expect(within(panel).queryByText(/full game without the account check/)).toBeNull();
     expect(within(row('Tester')).getByText('Demo')).toBeVisible();
   });
@@ -375,5 +385,132 @@ describe('AccountView', () => {
     expect(
       within(screen.getByRole('alertdialog')).getByRole('button', { name: 'Cancel' }),
     ).toHaveFocus();
+  });
+
+  it('offers Check again exactly where a new check can tell something', () => {
+    const states: AccountState[] = [
+      'signed_out',
+      'signing_in',
+      'refreshing',
+      'verified_access',
+      'no_access',
+      'profile_setup_required',
+      'reauth_required',
+      'service_unavailable',
+      'app_not_approved',
+      'restricted',
+      'protocol_error',
+      'sign_out_pending',
+    ];
+    const offered = new Set<AccountState>([
+      'verified_access',
+      'no_access',
+      'profile_setup_required',
+      'service_unavailable',
+      'app_not_approved',
+      'restricted',
+      'protocol_error',
+    ]);
+    setup({
+      accounts: states.map((state) =>
+        microsoft({ profileId: `id_${state}`, profileName: `P_${state}`, state }),
+      ),
+    });
+    for (const state of states) {
+      const check = within(row(`P_${state}`)).queryByRole('button', { name: 'Check again' });
+      expect({ state, offered: check !== null }).toEqual({ state, offered: offered.has(state) });
+    }
+  });
+
+  it('says a failed check once, as the account says it', async () => {
+    const error: LauncherError = {
+      code: 'NO_GAME_ACCESS',
+      message: 'This Microsoft account does not currently have access.',
+      retryable: false,
+      diagnosticId: 'd',
+    };
+    mockIPC((cmd) => {
+      // eslint-disable-next-line @typescript-eslint/only-throw-error
+      if (cmd === 'verify_account') throw error;
+      if (cmd === 'skins_microsoft_heads') return {};
+      return null;
+    });
+    const base = snapshotFixture({ microsoftClientId: 'configured_unverified' });
+    render(
+      <AccountView
+        snapshot={{
+          ...base,
+          account: { ...base.account, accounts: [microsoft({ state: 'no_access', error })] },
+        }}
+      />,
+    );
+    fireEvent.click(within(row('Steve_Test')).getByRole('button', { name: 'Check again' }));
+    await waitFor(() => {
+      expect(within(row('Steve_Test')).getByRole('button', { name: 'Check again' })).toBeEnabled();
+    });
+    expect(within(row('Steve_Test')).getAllByText(/does not currently have access/)).toHaveLength(
+      1,
+    );
+  });
+
+  it('moves from offline back to demo with the arrow keys', async () => {
+    const calls = setup(
+      { fullGameAllowed: true },
+      { settings: { ...snapshotFixture().settings, notokenOffline: true } },
+    );
+    const panel = screen.getByRole('region', { name: 'Profiles without an account' });
+    const offline = within(panel).getByRole('radio', { name: 'Offline' });
+    expect(offline).toHaveAttribute('tabindex', '0');
+    fireEvent.keyDown(offline, { key: 'ArrowLeft' });
+    await waitFor(() => {
+      expect(
+        named('set_app_settings', calls).map(
+          (c) => (c.args as { request: { payload: unknown } }).request.payload,
+        ),
+      ).toEqual([{ notokenOffline: false }]);
+    });
+    expect(within(panel).getByRole('radio', { name: 'Demo' })).toHaveFocus();
+  });
+
+  it('keeps the mode radios focusable while a change is saved, and waits', async () => {
+    const calls: string[] = [];
+    mockIPC((cmd) => {
+      calls.push(cmd);
+      // Never answers: the change stays pending.
+      if (cmd === 'set_app_settings') return new Promise(() => undefined);
+      return null;
+    });
+    const base = snapshotFixture({ microsoftClientId: 'configured_unverified' });
+    render(
+      <AccountView snapshot={{ ...base, account: { ...base.account, fullGameAllowed: true } }} />,
+    );
+    const panel = screen.getByRole('region', { name: 'Profiles without an account' });
+    const demo = within(panel).getByRole('radio', { name: 'Demo' });
+    const offline = within(panel).getByRole('radio', { name: 'Offline' });
+    fireEvent.keyDown(demo, { key: 'ArrowRight' });
+    await waitFor(() => {
+      expect(offline).toHaveAttribute('aria-disabled', 'true');
+    });
+    // Not disabled: a disabled control would drop the focus in WebView2.
+    expect(offline).toBeEnabled();
+    expect(offline).toHaveFocus();
+    // The saved mode is still demo: offline asked again waits for the first answer.
+    fireEvent.keyDown(demo, { key: 'ArrowRight' });
+    fireEvent.click(offline);
+    expect(calls.filter((c) => c === 'set_app_settings')).toHaveLength(1);
+  });
+
+  it('puts focus on Cancel once, and back on Remove when cancelled', () => {
+    setup({ notokenProfiles: [{ id: 'p-0', name: 'Tester' }] });
+    fireEvent.click(within(row('Tester')).getByRole('button', { name: 'Remove' }));
+    const input = screen.getByLabelText('Player name');
+    input.focus();
+    // A render of the screen while the question is open leaves the focus where it is.
+    fireEvent.change(input, { target: { value: 'Alex' } });
+    expect(input).toHaveFocus();
+    fireEvent.click(
+      within(screen.getByRole('alertdialog')).getByRole('button', { name: 'Cancel' }),
+    );
+    expect(within(row('Tester')).getByRole('button', { name: 'Remove' })).toHaveFocus();
   });
 });

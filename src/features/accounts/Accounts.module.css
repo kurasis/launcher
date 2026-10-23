@@ -129,8 +129,10 @@
 
 /* A profile's actions sit at the row's end once the list has room for them. */
 @container rows (min-width: 30rem) {
+  /* The name keeps room of its own; the actions wrap within what is left (the
+     remove question is wider than the buttons). */
   .inline {
-    grid-template-columns: auto minmax(0, 1fr) auto;
+    grid-template-columns: auto minmax(min(10rem, 100%), 1fr) minmax(0, auto);
   }
 
   .inline .itemHead {
@@ -152,25 +154,18 @@
   gap: var(--space-1) var(--space-2);
 }
 
-/* A player name: as wide as sixteen letters, not the whole column. */
+/* A new profile: the field, then its button under it. */
 .addForm {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-start;
-  gap: var(--space-2) var(--space-3);
+  display: grid;
+  justify-items: start;
+  gap: var(--space-3);
 }
 
-/* The field is as wide as its input, so its hint wraps under it and the button stays
-   beside the input. */
 .addForm > :first-child {
-  flex: 0 1 14rem;
-  min-inline-size: 0;
+  max-inline-size: 100%;
 }
 
-.addForm > button {
-  margin-block-start: 1.5625rem;
-}
-
+/* A player name: as wide as sixteen letters, not the whole column. */
 .nameInput {
   inline-size: min(14rem, 100%);
 }
@@ -185,6 +180,7 @@
   list-style: none;
 }
 
+/* Underlined, so they read as links beside muted text and in contrast themes too. */
 .link {
   padding: 0;
   border: 0;
@@ -193,11 +189,19 @@
   font: inherit;
   font-size: var(--font-size-sm);
   text-align: start;
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
   cursor: pointer;
 }
 
 .link:hover {
-  text-decoration: underline;
+  text-decoration-thickness: 2px;
+}
+
+@media (forced-colors: active) {
+  .link {
+    color: LinkText;
+  }
 }
 
 /* Check again whether the email is confirmed: a small round arrow by the badge. */
@@ -278,6 +282,10 @@
 .segmented button:disabled {
   cursor: not-allowed;
   opacity: 0.55;
+}
+
+.segmented button[aria-disabled='true'] {
+  cursor: progress;
 }
 
 @media (forced-colors: active) {

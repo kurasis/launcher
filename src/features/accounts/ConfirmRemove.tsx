@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Button } from '../../components/Button';
 import { strings } from '../../lib/strings';
 import styles from './Accounts.module.css';
@@ -15,9 +15,24 @@ const a = strings.accounts;
 /** A Remove button that asks first: a removed account needs signing in again. */
 export function ConfirmRemove({ question, disabled = false, onRemove }: ConfirmRemoveProps) {
   const [asking, setAsking] = useState(false);
+  const cancel = useRef<HTMLButtonElement>(null);
+  const remove = useRef<HTMLButtonElement>(null);
+  const backToRemove = useRef(false);
+  // The pressed Remove is gone: focus waits on the safe answer, once, when the
+  // question opens (never again on a later render), and comes back to Remove when
+  // the question is cancelled.
+  useEffect(() => {
+    if (asking) {
+      cancel.current?.focus();
+    } else if (backToRemove.current) {
+      backToRemove.current = false;
+      remove.current?.focus();
+    }
+  }, [asking]);
   if (!asking) {
     return (
       <Button
+        ref={remove}
         size="small"
         disabled={disabled}
         onClick={() => {
@@ -42,13 +57,11 @@ export function ConfirmRemove({ question, disabled = false, onRemove }: ConfirmR
       >
         {a.remove}
       </Button>
-      {/* The pressed Remove is gone: focus waits on the safe answer. */}
       <Button
-        ref={(node) => {
-          node?.focus();
-        }}
+        ref={cancel}
         size="small"
         onClick={() => {
+          backToRemove.current = true;
           setAsking(false);
         }}
       >

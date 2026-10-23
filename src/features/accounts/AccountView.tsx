@@ -117,7 +117,10 @@ function AccountRow({ account, head, isDefault, busy, canSignIn, onSignIn, onDef
   const signOut = useCommand((requestId: string, id: string) => ipc.signOut(id, requestId));
   const check = useCommand((requestId: string, id: string) => ipc.verifyAccount(id, requestId));
   const state = account.state;
-  const error = signOut.error ?? check.error;
+  // A failed check also lands on the account: say it once, as the account's notice.
+  const notice =
+    account.error !== null && state !== 'verified_access' ? localizeError(account.error) : null;
+  const error = signOut.error ?? (check.error === notice ? null : check.error);
   const disabled = busy || signOut.pending || check.pending;
   const signIn = state === 'reauth_required' && canSignIn;
   return (
@@ -161,9 +164,9 @@ function AccountRow({ account, head, isDefault, busy, canSignIn, onSignIn, onDef
           {t.checking}
         </p>
       )}
-      {account.error !== null && state !== 'verified_access' && (
+      {notice !== null && (
         <div className={styles.itemWide}>
-          <Notice tone="warning">{localizeError(account.error)}</Notice>
+          <Notice tone="warning">{notice}</Notice>
         </div>
       )}
       {error !== null && (
@@ -217,7 +220,7 @@ export function AccountView({
   const busy = signIn.pending || cancel.pending || setDefault.pending;
   const loginState = account.loginState;
   const isDefault = (profile: ProfileRef) => sameProfile(account.defaultProfile, profile);
-  const modeLocked = setMode.pending || !snapshot.settings.writable;
+  const modeLocked = !snapshot.settings.writable;
   const notokenOffline = snapshot.settings.notokenOffline && account.fullGameAllowed;
 
   const own = account.launcherAccount;
@@ -237,6 +240,7 @@ export function AccountView({
                 offline={snapshot.settings.launcherAccountOffline}
                 allowed={account.fullGameAllowed}
                 disabled={modeLocked}
+                pending={setMode.pending}
                 onChange={(offline) => void setMode.run({ launcherAccountOffline: offline })}
               />
             }
@@ -254,6 +258,7 @@ export function AccountView({
                 offline={snapshot.settings.notokenOffline}
                 allowed={account.fullGameAllowed}
                 disabled={modeLocked}
+                pending={setMode.pending}
                 onChange={(offline) => void setMode.run({ notokenOffline: offline })}
               />
             }

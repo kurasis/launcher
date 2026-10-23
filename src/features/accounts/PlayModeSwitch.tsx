@@ -14,22 +14,32 @@ export function PlayModeSwitch({
   offline,
   allowed,
   disabled,
+  pending = false,
   onChange,
 }: {
   offline: boolean;
   allowed: boolean;
+  /** The settings cannot be written. */
   disabled: boolean;
+  /** A change is being saved: the radios wait, but keep the focus (a disabled
+   * control loses it in WebView2 and WebKit). */
+  pending?: boolean;
   onChange: (offline: boolean) => void;
 }) {
   const shown = offline && allowed;
   const buttons = useRef(new Map<boolean, HTMLButtonElement>());
   const choose = (choice: boolean) => {
-    if (disabled || (choice && !allowed) || choice === shown) return;
+    if (disabled || pending || (choice && !allowed) || choice === shown) return;
     onChange(choice);
     buttons.current.get(choice)?.focus();
   };
   return (
-    <div className={styles.segmented} role="radiogroup" aria-label={a.playMode}>
+    <div
+      className={styles.segmented}
+      role="radiogroup"
+      aria-label={a.playMode}
+      aria-busy={pending || undefined}
+    >
       {([false, true] as const).map((choice) => (
         <button
           key={String(choice)}
@@ -40,6 +50,7 @@ export function PlayModeSwitch({
           type="button"
           role="radio"
           aria-checked={shown === choice}
+          aria-disabled={pending || undefined}
           tabIndex={shown === choice ? 0 : -1}
           disabled={disabled || (choice && !allowed)}
           onClick={() => {

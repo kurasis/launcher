@@ -190,4 +190,32 @@ describe('launcher account', () => {
       ).toEqual([{ launcherAccountOffline: true }]);
     });
   });
+
+  it('says why offline is closed, or what it is, beside its own switch', () => {
+    mockIPC(() => null);
+    const base = snapshotFixture();
+    const { rerender } = render(
+      <AccountView
+        snapshot={{
+          ...base,
+          account: { ...base.account, launcherAccount: view(), fullGameAllowed: false },
+        }}
+      />,
+    );
+    const panel = () =>
+      screen.getByRole('heading', { name: 'Launcher account' }).closest('section') as HTMLElement;
+    expect(
+      within(panel()).getByText(/Offline needs a Microsoft account that owns Minecraft/),
+    ).toBeVisible();
+    rerender(
+      <AccountView
+        snapshot={{
+          ...base,
+          settings: { ...base.settings, launcherAccountOffline: true },
+          account: { ...base.account, launcherAccount: view(), fullGameAllowed: true },
+        }}
+      />,
+    );
+    expect(within(panel()).getByText(/full game without the account check/)).toBeVisible();
+  });
 });
