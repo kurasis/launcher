@@ -4,6 +4,7 @@ import type { WorldsPreview, WorldsProblem } from '../../lib/contracts';
 import { ipc, worldsProblemOf } from '../../lib/ipc';
 import { strings } from '../../lib/strings';
 import { worldsErrorText } from '../worlds/useWorlds';
+import { focusLost } from './focus';
 import styles from './Friends.module.css';
 
 const t = strings.friends;
@@ -124,11 +125,16 @@ export function WorldInviteCard({
 }) {
   const card = useRef<HTMLDivElement>(null);
   const seen = useSeen(card);
-  const [result, setResult] = useState<Looked | null>(null);
+  // What is known shows at once; nothing flickers on a chat opened again.
+  const [result, setResult] = useState<Looked | null>(() => known(code));
+  // No look to spare: the card waits for a press.
+  const [waiting, setWaiting] = useState(false);
   const [asked, setAsked] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const live = useRef(true);
+  // The focus is on one of the card's buttons, which may go when the answer comes.
+  const hadFocus = useRef(false);
   useEffect(() => {
     live.current = true;
     return () => {
@@ -138,15 +144,26 @@ export function WorldInviteCard({
 
   // Once in view: what is known, else a look of its own while there are looks to spare.
   useEffect(() => {
-    if (!seen || (known(code) === null && !looking.has(code) && !mayLookByItself())) return;
+    if (!seen) return;
+    const spare = known(code) !== null || looking.has(code) || mayLookByItself();
     let on = true;
-    void look(code).then((next) => {
-      if (on) setResult(next);
+    void (spare ? look(code) : Promise.resolve(null)).then((next) => {
+      if (!on) return;
+      if (next === null) setWaiting(true);
+      else setResult(next);
     });
     return () => {
       on = false;
     };
   }, [seen, code]);
+
+  // Look went with the answer (the facts came, or the code was refused): the focus goes
+  // to what the card offers now, or to the card itself.
+  useEffect(() => {
+    if (!hadFocus.current || !focusLost()) return;
+    hadFocus.current = false;
+    (card.current?.querySelector<HTMLElement>('button') ?? card.current)?.focus();
+  }, [result]);
 
   const ask = () => {
     if (asked) return;
@@ -181,7 +198,24 @@ export function WorldInviteCard({
   };
 
   return (
-    <div ref={card} className={styles.card}>
+    <div
+      ref={card}
+      className={styles.card}
+      // Takes the focus when the button that had it went with the answer.
+      tabIndex={-1}
+      onFocus={() => {
+        hadFocus.current = true;
+      }}
+      onBlur={(event) => {
+        const next = event.relatedTarget;
+        if (next instanceof Node && event.currentTarget.contains(next)) return;
+        // Gone elsewhere, or to nothing while the button stays (a press on text).
+        const target = event.target;
+        queueMicrotask(() => {
+          if (next !== null || target.isConnected) hadFocus.current = false;
+        });
+      }}
+    >
       <p className={styles.cardTitle}>
         {mine ? t.youInvitedWorld : t.invitedToWorld({ nick: from })}
       </p>
@@ -224,7 +258,7 @@ export function WorldInviteCard({
               {strings.worlds.code.accept}
             </Button>
           )}
-          {preview === null && (
+          {preview === null && (waiting || failed !== null) && (
             <Button size="small" variant="ghost" aria-disabled={asked || undefined} onClick={ask}>
               {strings.worlds.code.look}
             </Button>

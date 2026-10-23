@@ -103,4 +103,41 @@ describe('world invite card', () => {
     fireEvent.click(within(waiting).getByRole('button', { name: 'Open room' }));
     expect(onOpen).toHaveBeenCalledWith(ROOM);
   });
+
+  it('shows Look only when a press is needed, and hands its focus on when it goes', async () => {
+    // A new ten minutes: looks to spare again.
+    const now = vi.spyOn(Date, 'now').mockReturnValue(Date.now() + 11 * 60_000);
+    try {
+      let answer: (preview: WorldsPreview) => void = () => undefined;
+      let fail = true;
+      setup(() => {
+        if (fail) throw problem('server');
+        return new Promise<WorldsPreview>((done) => {
+          answer = done;
+        }) as unknown as WorldsPreview;
+      });
+      render(card(40));
+      // Looking by itself shows no Look; a failure does.
+      const look = await screen.findByRole('button', { name: 'Look' });
+      fail = false;
+      look.focus();
+      fireEvent.click(look);
+      expect(look).toHaveAttribute('aria-disabled', 'true');
+      answer(PREVIEW);
+      expect(await screen.findByText('Our base, Minecraft 1.21.1')).toBeVisible();
+      expect(screen.queryByRole('button', { name: 'Look' })).toBeNull();
+      // The focus went to what the card offers now, not to the page.
+      expect(screen.getByRole('button', { name: 'Join the room' })).toHaveFocus();
+    } finally {
+      now.mockRestore();
+    }
+  });
+
+  it('shows what is known at once, with nothing to press for it', () => {
+    // Code 3 was looked at above and is still known.
+    setup(() => PREVIEW);
+    render(card(3, true));
+    expect(screen.getByText('Our base, Minecraft 1.21.1')).toBeVisible();
+    expect(screen.queryByRole('button', { name: 'Look' })).toBeNull();
+  });
 });

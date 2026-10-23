@@ -83,13 +83,19 @@ export function FriendsCorner({
 
   // Like a press on the scrim, the focus or a press going anywhere outside the sheet and
   // its row puts the sheet away: nothing under it can be reached while it is open. A
-  // dialog over it (a question from the launcher) keeps it, and so does a lost focus.
-  // Escape closes it from anywhere, unless a control in it took the key (a menu, a
-  // question) or a dialog is open (the key is the dialog's).
+  // dialog over it (a question from the launcher, the command palette) keeps it, with
+  // its scrim, and so does a lost focus. Escape closes it from anywhere, unless a
+  // control in it took the key (a menu, a question) or a dialog is open (the key is
+  // the dialog's).
   useEffect(() => {
     if (!open) return;
+    const dialogOpen = () =>
+      coveredByDialog(null) || document.querySelector('[aria-modal="true"]') !== null;
     const elsewhere = (target: EventTarget | null) =>
-      target instanceof Node && !(slot.current?.contains(target) ?? true) && !inDialog(target);
+      target instanceof Node &&
+      !(slot.current?.contains(target) ?? true) &&
+      !inDialog(target) &&
+      !dialogOpen();
     const onFocus = (event: FocusEvent) => {
       if (elsewhere(event.target)) setOpen(false);
     };
@@ -98,7 +104,7 @@ export function FriendsCorner({
     };
     const onKey = (event: KeyboardEvent) => {
       if (event.key !== 'Escape' || event.defaultPrevented || event.isComposing) return;
-      if (coveredByDialog(null)) return;
+      if (dialogOpen()) return;
       setOpen(false);
       buttonRef.current?.focus();
     };

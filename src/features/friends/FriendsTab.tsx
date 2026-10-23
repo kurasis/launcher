@@ -6,7 +6,7 @@ import type { FriendAction, FriendPerson, FriendsView, SettingsView } from '../.
 import { ipc } from '../../lib/ipc';
 import { strings } from '../../lib/strings';
 import { Confirm } from './Confirm';
-import { useRowFocus } from './focus';
+import { focusLost, useRowFocus } from './focus';
 import styles from './Friends.module.css';
 import type { GameForInvites } from './InviteCard';
 import { inviteBody } from './invite';
@@ -78,6 +78,7 @@ export function FriendsTab({
           event.preventDefault();
           const wanted = nick.trim();
           if (wanted.length === 0 || action.pending) return;
+          const by = document.activeElement;
           setNotice(null);
           void action
             .run(() => ipc.friendsRequest(wanted))
@@ -86,8 +87,9 @@ export function FriendsTab({
               setNotice(
                 result === 'friends' ? t.nowFriends({ nick: wanted }) : t.sent({ nick: wanted }),
               );
-              // The emptied field turns Add off: the focus goes to the field, for the next nick.
-              input.current?.focus();
+              // The emptied field turns Add off: the focus, if still on it, goes to the
+              // field for the next nick. Where the player went meanwhile, it stays.
+              if (document.activeElement === by || focusLost()) input.current?.focus();
               setNick('');
             });
         }}

@@ -3,6 +3,7 @@ import { emit } from '@tauri-apps/api/event';
 import { mockIPC } from '@tauri-apps/api/mocks';
 import { describe, expect, it, vi } from 'vitest';
 import type { AppSnapshot, ChatMessage, ChatRoom, FriendsView } from '../../lib/contracts';
+import { Dialog } from '../../components/Dialog';
 import { addDialog, removeDialog } from '../../components/dialogStack';
 import { instanceFixture, snapshotFixture } from '../../test/fixtures';
 import { FriendsCorner } from './FriendsCorner';
@@ -1087,5 +1088,158 @@ describe('friends corner', () => {
     const panel = await openPanel();
     expect(within(panel).getByRole('button', { name: /when\?/ })).toBeVisible();
     expect(panel.querySelector('time')).not.toHaveAttribute('datetime');
+  });
+
+  it('stays under a launcher dialog, its scrim and the command palette', async () => {
+    setup(signedIn());
+    const sheet = () => screen.queryByRole('region', { name: 'Friends and chats' });
+    const button = await screen.findByRole('button', { name: /Friends and chats/ });
+    fireEvent.click(button);
+    // A question of the launcher opens over it: a press on its scrim keeps the sheet.
+    const question = render(
+      <Dialog title="Start anyway?" onClose={() => undefined}>
+        <button type="button">Start</button>
+      </Dialog>,
+    );
+    const dialog = screen.getByRole('dialog', { name: 'Start anyway?' });
+    fireEvent.pointerDown(dialog.parentElement as HTMLElement);
+    fireEvent.pointerDown(within(dialog).getByRole('button', { name: 'Start' }));
+    expect(sheet()).not.toBeNull();
+    question.unmount();
+    // A modal of its own (the command palette) takes the focus: the sheet waits under it.
+    const palette = document.createElement('div');
+    palette.setAttribute('aria-modal', 'true');
+    const search = document.createElement('input');
+    palette.append(search);
+    document.body.append(palette);
+    try {
+      act(() => {
+        search.focus();
+      });
+      fireEvent.keyDown(search, { key: 'Escape' });
+      expect(sheet()).not.toBeNull();
+    } finally {
+      palette.remove();
+    }
+  });
+
+  it('leaves the focus alone after a press on text, whatever changes in the lists', async () => {
+    const request = (person: typeof ALEX, at: number) => ({
+      ...person,
+      at,
+      online: false,
+      playing: null,
+    });
+    const view = signedIn({ incoming: [request(ALEX, 3), request(NOTCH, 4)] });
+    setup(view, { friends_state: () => view });
+    const panel = await openPanel();
+    fireEvent.click(within(panel).getByRole('tab', { name: /Requests/ }));
+    const second = within(panel).getByText('Notch_1').closest('li') as HTMLElement;
+    within(second).getByRole('button', { name: 'Spam' }).focus();
+    // A press on the nick: the focus goes to nothing, and the row stays.
+    await act(async () => {
+      (document.activeElement as HTMLElement).blur();
+      await Promise.resolve();
+    });
+    await act(async () => {
+      await emit('friends://state', signedIn({ incoming: [request(ALEX, 3), request(NOTCH, 4)] }));
+    });
+    expect(document.body).toHaveFocus();
+  });
+
+  it('gives the focus back to the nick field only if it is still where the press left it', async () => {
+    let answer: (result: string) => void = () => undefined;
+    setup(signedIn(), {
+      friends_request: () =>
+        new Promise((done) => {
+          answer = done;
+        }),
+    });
+    const panel = await openPanel();
+    fireEvent.click(within(panel).getByRole('tab', { name: /Friends/ }));
+    const field = within(panel).getByRole('textbox', { name: /Add a friend by nick/ });
+    fireEvent.change(field, { target: { value: 'Kira_7' } });
+    press(within(panel).getByRole('button', { name: 'Send request' }));
+    // The player moves on while the request goes.
+    const sound = within(panel).getByRole('checkbox', { name: /Sound/ });
+    sound.focus();
+    await act(async () => {
+      answer('sent');
+      await Promise.resolve();
+    });
+    expect(await within(panel).findByText(/Kira_7/)).toBeVisible();
+    expect(sound).toHaveFocus();
+  });
+
+  it('keeps the first unread message in sight while a card grows under it', async () => {
+    const code = 'GrowGrowGrowGrowGrow01';
+    let answer: (preview: unknown) => void = () => undefined;
+    let page: (messages: ChatMessage[]) => void = () => undefined;
+    setup(signedIn(), {
+      friends_messages: () =>
+        new Promise((done) => {
+          page = done;
+        }),
+      worlds_preview: () =>
+        new Promise((done) => {
+          answer = done;
+        }),
+    });
+    const offsetTop = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'offsetTop');
+    Object.defineProperty(HTMLElement.prototype, 'offsetTop', {
+      configurable: true,
+      get(this: HTMLElement) {
+        return this.getAttribute('role') === 'separator' ? 480 : 0;
+      },
+    });
+    try {
+      const panel = await openPanel();
+      fireEvent.click(within(panel).getByRole('button', { name: /Alex/ }));
+      const list = await within(panel).findByRole('list', { name: 'Alex' });
+      // A list 300 px high with 800 px of messages; what the code sets is kept.
+      const set: number[] = [];
+      let top = 0;
+      Object.defineProperties(list, {
+        scrollHeight: { configurable: true, get: () => 800 },
+        clientHeight: { configurable: true, get: () => 300 },
+        scrollTop: {
+          configurable: true,
+          get: () => top,
+          set: (value: number) => {
+            top = Math.min(value, 500);
+            set.push(value);
+          },
+        },
+      });
+      await act(async () => {
+        page([message(1, ME.id, 'hi'), message(2, ALEX.id, `🌍 world ${code}`)]);
+        await Promise.resolve();
+      });
+      expect(await within(panel).findByText('Alex invites you to a world')).toBeVisible();
+      expect(set.length).toBeGreaterThan(0);
+      expect(set.every((value) => value === 472)).toBe(true);
+      const before = set.length;
+      await act(async () => {
+        answer({
+          room: ROOM,
+          name: 'Our base',
+          ownerNick: 'Alex',
+          members: 2,
+          minecraft: '1.21.1',
+          mods: null,
+          hosting: false,
+        });
+        await Promise.resolve();
+      });
+      expect(await within(panel).findByText('Our base, Minecraft 1.21.1')).toBeVisible();
+      await waitFor(() => {
+        expect(set.length).toBeGreaterThan(before);
+      });
+      // The facts came in under it: the first unread message stays where it was put.
+      expect(set.every((value) => value === 472)).toBe(true);
+    } finally {
+      if (offsetTop !== undefined)
+        Object.defineProperty(HTMLElement.prototype, 'offsetTop', offsetTop);
+    }
   });
 });

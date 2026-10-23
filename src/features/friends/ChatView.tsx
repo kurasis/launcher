@@ -88,6 +88,8 @@ export function ChatView({
   const readUpTo = useRef(0);
   const stick = useRef(true);
   const hintId = useId();
+  // The control in the chat that had the focus last.
+  const lastFocus = useRef<Element | null>(null);
 
   useEffect(() => {
     let live = true;
@@ -122,32 +124,43 @@ export function ChatView({
 
   // Keep the newest message in sight unless the player scrolled up to read, and bring
   // it into sight when it is mine; on opening, the first unread message comes into
-  // sight instead.
+  // sight instead, and stays there until the player scrolls or a message comes.
   const last = messages.at(-1)?.id ?? 0;
   const lastMine = me !== null && messages.at(-1)?.sender === me.id;
   const shownFirstUnread = useRef(false);
+  /** Where the first unread message was put in sight, while the player has not scrolled. */
+  const pinned = useRef<number | null>(null);
+  const showFirstUnread = (element: HTMLOListElement, line: HTMLLIElement) => {
+    element.scrollTop = Math.max(0, line.offsetTop - element.offsetTop - 8);
+    pinned.current = element.scrollTop;
+    stick.current = element.scrollHeight - element.scrollTop - element.clientHeight < 40;
+  };
   useEffect(() => {
     const element = list.current;
     if (element === null) return;
     if (!shownFirstUnread.current && divider.current !== null) {
       shownFirstUnread.current = true;
-      element.scrollTop = Math.max(0, divider.current.offsetTop - element.offsetTop - 8);
-      stick.current = element.scrollHeight - element.scrollTop - element.clientHeight < 40;
+      showFirstUnread(element, divider.current);
       return;
     }
+    pinned.current = null;
     if (stick.current || lastMine) {
       element.scrollTop = element.scrollHeight;
       stick.current = true;
     }
   }, [last, lastMine]);
 
-  // What grows in the list after it was drawn (a world's facts coming in under the last
-  // message) keeps the newest message in sight while it was.
+  // What grows in the list after it was drawn (a world's facts coming in) keeps the
+  // first unread message in sight while it is there, else the newest one while it was.
   useEffect(() => {
     const element = list.current;
     if (element === null || typeof MutationObserver === 'undefined') return;
     const observer = new MutationObserver(() => {
-      if (stick.current) element.scrollTop = element.scrollHeight;
+      if (pinned.current !== null && divider.current !== null) {
+        showFirstUnread(element, divider.current);
+      } else if (stick.current) {
+        element.scrollTop = element.scrollHeight;
+      }
     });
     observer.observe(element, { childList: true, subtree: true, characterData: true });
     return () => {
@@ -171,6 +184,15 @@ export function ChatView({
     askedEarlier.current = false;
     if (focusLost()) list.current?.focus();
   }, [more]);
+
+  // Whatever else went with the focus (a message a moderator removed, a card's button):
+  // the list takes it, so Tab and Escape go on working.
+  useEffect(() => {
+    const gone = lastFocus.current;
+    if (gone === null || gone.isConnected || !focusLost()) return;
+    lastFocus.current = null;
+    list.current?.focus();
+  });
 
   // What is on screen counts as read.
   useEffect(() => {
@@ -343,7 +365,12 @@ export function ChatView({
   }
 
   return (
-    <div className={styles.chat}>
+    <div
+      className={styles.chat}
+      onFocus={(event) => {
+        lastFocus.current = event.target;
+      }}
+    >
       <div className={styles.chatHead}>
         <RoomAvatar room={room} me={me} heads={heads} size={28} />
         <h3 className={styles.chatTitle} dir="auto">
@@ -445,14 +472,16 @@ export function ChatView({
               <Button
                 size="small"
                 disabled={adding === ''}
-                onClick={() =>
+                onClick={(event) => {
+                  const by = event.currentTarget;
                   void run(() => ipc.friendsChangeRoom(room.id, 'add', adding)).then((ok) => {
                     if (!ok) return;
-                    // The emptied choice turns Add off: the focus goes to the choice.
-                    addSelect.current?.focus();
+                    // The emptied choice turns Add off: the focus, if still on it, goes to
+                    // the choice. Where the player went meanwhile, it stays.
+                    if (document.activeElement === by || focusLost()) addSelect.current?.focus();
                     setAdding('');
-                  })
-                }
+                  });
+                }}
               >
                 {t.addToGroup}
               </Button>
@@ -517,6 +546,10 @@ export function ChatView({
         tabIndex={-1}
         onScroll={(event) => {
           const element = event.currentTarget;
+          // The player moved it: the first unread message is theirs to keep in sight.
+          if (pinned.current !== null && Math.abs(element.scrollTop - pinned.current) > 1) {
+            pinned.current = null;
+          }
           stick.current = element.scrollHeight - element.scrollTop - element.clientHeight < 40;
         }}
       >
