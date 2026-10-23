@@ -233,6 +233,7 @@ export type Messages = {
       readonly protocol_error: string;
       readonly sign_out_pending: string;
     };
+    readonly linksLabel: string;
   };
   readonly accounts: {
     readonly microsoftTitle: string;
@@ -453,6 +454,8 @@ export type Messages = {
         readonly server: string;
       };
     };
+    readonly skinsWhere: string;
+    readonly openSkins: string;
   };
   readonly instances: {
     readonly title: string;

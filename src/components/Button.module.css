@@ -53,6 +53,13 @@
   background: var(--color-hover);
 }
 
+/* The actions of a row in a list. */
+.small {
+  min-height: 2rem;
+  padding: 0 var(--space-3);
+  font-weight: 500;
+}
+
 /* The main call to action, such as Play. */
 .large {
   min-width: 10rem;

@@ -427,11 +427,11 @@ export const ipc = {
    * for a nick without a skin of ours. */
   skinsHeads: (nicks: string[]): Promise<Record<string, string | null>> =>
     invoke<Record<string, string | null>>('skins_heads', { nicks }),
-  /** Takes the skin or cape another player wears, by nick, as a picked one. */
   /** The heads of the Microsoft accounts signed in here, by profile ID: the skin
    * Mojang serves for each, or null (draw the default). */
   skinsMicrosoftHeads: (): Promise<Record<string, string | null>> =>
     invoke<Record<string, string | null>>('skins_microsoft_heads'),
+  /** Takes the skin or cape another player wears, by nick, as a picked one. */
   skinsByNick: (kind: SkinKind, nick: string): Promise<PickedTexture> =>
     invoke<PickedTexture>('skins_by_nick', { kind, nick }),
   /** Picks a PNG, GIF or APNG in the native dialog; null if it was closed. */

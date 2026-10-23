@@ -1,39 +1,203 @@
-.list {
+/* The Accounts screen in concept A: two columns while there is room for both. */
+.columns {
   display: grid;
-  gap: var(--space-3);
-  margin: var(--space-3) 0;
-  padding: 0;
-  list-style: none;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-6);
+  align-items: start;
 }
 
-.row {
-  display: grid;
-  gap: var(--space-2);
-  padding: var(--space-3);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  background: var(--color-surface);
+@container screen (min-width: 46rem) {
+  .columns {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
-.rowHead {
+.column {
+  display: grid;
+  gap: var(--space-6);
+  min-inline-size: 0;
+}
+
+.hint {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+}
+
+.actions {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: var(--space-2);
 }
 
-.tag {
-  padding: 0 var(--space-2);
-  border-radius: var(--radius-pill);
-  background: var(--color-neutral-bg);
-  border: 1px solid var(--color-border);
-  font-size: var(--font-size-sm);
-  color: var(--color-text-muted);
+/* The launcher account: head, nick, its state, and how it plays at the row's end. */
+.person {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
+  min-inline-size: 0;
 }
 
-.hint {
+.nick {
+  font-size: var(--font-size-md);
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.where {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-2);
+  margin: 0;
+}
+
+.tag {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.0625rem var(--space-2);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-pill);
+  color: var(--color-text-muted);
+  font-size: var(--font-size-xs);
+  font-weight: 500;
+  line-height: 1.4;
+  white-space: nowrap;
+}
+
+/* Accounts and profiles: a head beside the name, the state under it, then actions. */
+.list {
+  container: rows / inline-size;
+  display: grid;
+  gap: var(--space-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.item {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 0.125rem var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-md);
+  transition: background-color var(--motion-duration) ease-out;
+}
+
+.item:hover {
+  background: var(--color-hover);
+}
+
+.itemHead {
+  grid-row: span 3;
+  align-self: start;
+}
+
+.itemTitle {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-2);
+  min-inline-size: 0;
+  font-size: var(--font-size-md);
+  overflow-wrap: anywhere;
+}
+
+.itemMeta {
+  grid-column: 2;
+  margin: 0;
   color: var(--color-text-muted);
   font-size: var(--font-size-sm);
+}
+
+.itemActions {
+  grid-column: 2;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-2);
+  margin-block-start: var(--space-1);
+}
+
+.itemWide {
+  grid-column: 2;
+  min-inline-size: 0;
+}
+
+/* A profile's actions sit at the row's end once the list has room for them. */
+@container rows (min-width: 30rem) {
+  .inline {
+    grid-template-columns: auto minmax(0, 1fr) auto;
+  }
+
+  .inline .itemHead {
+    grid-row: span 2;
+    align-self: center;
+  }
+
+  .inline .itemActions {
+    grid-column: 3;
+    grid-row: 1 / span 2;
+    margin: 0;
+  }
+}
+
+.confirm {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-2);
+}
+
+/* A player name: as wide as sixteen letters, not the whole column. */
+.addForm {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: var(--space-2) var(--space-3);
+}
+
+/* The field is as wide as its input, so its hint wraps under it and the button stays
+   beside the input. */
+.addForm > :first-child {
+  flex: 0 1 14rem;
+  min-inline-size: 0;
+}
+
+.addForm > button {
+  margin-block-start: 1.5625rem;
+}
+
+.nameInput {
+  inline-size: min(14rem, 100%);
+}
+
+/* Official pages: links that the core opens in the browser. */
+.links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-4);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.link {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--color-accent-text);
+  font: inherit;
+  font-size: var(--font-size-sm);
+  text-align: start;
+  cursor: pointer;
+}
+
+.link:hover {
+  text-decoration: underline;
 }
 
 /* Check again whether the email is confirmed: a small round arrow by the badge. */
@@ -52,7 +216,7 @@
 
 .refresh:hover:not(:disabled) {
   color: var(--color-text);
-  background: var(--color-neutral-bg);
+  background: var(--color-hover);
 }
 
 .refresh svg {
@@ -82,36 +246,33 @@
 }
 
 /* Demo or offline: two halves of one control. */
-.mode {
-  display: grid;
-  gap: var(--space-1);
-  justify-items: start;
-}
-
 .segmented {
   display: inline-flex;
   padding: 3px;
   border: 1px solid var(--color-border);
-  border-radius: var(--radius-pill);
-  background: var(--color-neutral-bg);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-sunken);
 }
 
 .segmented button {
-  min-width: 6.5rem;
-  padding: 0.35rem 0.9rem;
-  border: none;
-  border-radius: var(--radius-pill);
+  min-width: 5.5rem;
+  min-height: 1.875rem;
+  padding: 0 var(--space-3);
+  border: 1px solid transparent;
+  border-radius: 5px;
   background: none;
   color: var(--color-text-muted);
   font: inherit;
-  font-weight: 600;
+  font-size: var(--font-size-sm);
+  font-weight: 500;
   cursor: pointer;
 }
 
 .segmented button[aria-checked='true'] {
+  border-color: var(--color-accent);
   background: var(--color-surface);
-  color: var(--color-text);
-  box-shadow: 0 1px 3px rgb(0 0 0 / 0.15);
+  color: var(--color-accent-text);
+  font-weight: 600;
 }
 
 .segmented button:disabled {
@@ -119,8 +280,8 @@
   opacity: 0.55;
 }
 
-.subtitle {
-  margin: 0;
-  font-size: var(--font-size-sm);
-  font-weight: 700;
+@media (forced-colors: active) {
+  .segmented button[aria-checked='true'] {
+    border-color: Highlight;
+  }
 }

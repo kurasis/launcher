@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Button } from '../../components/Button';
-import forms from '../../components/forms.module.css';
 import { strings } from '../../lib/strings';
+import styles from './Accounts.module.css';
 
 interface ConfirmRemoveProps {
   /** The question asked before removing. */
@@ -18,6 +18,7 @@ export function ConfirmRemove({ question, disabled = false, onRemove }: ConfirmR
   if (!asking) {
     return (
       <Button
+        size="small"
         disabled={disabled}
         onClick={() => {
           setAsking(true);
@@ -28,10 +29,11 @@ export function ConfirmRemove({ question, disabled = false, onRemove }: ConfirmR
     );
   }
   return (
-    <div className={forms.actions} role="alertdialog" aria-label={question}>
+    <div className={styles.confirm} role="alertdialog" aria-label={question}>
       <span>{question}</span>
       <Button
         variant="primary"
+        size="small"
         disabled={disabled}
         onClick={() => {
           setAsking(false);
@@ -40,7 +42,12 @@ export function ConfirmRemove({ question, disabled = false, onRemove }: ConfirmR
       >
         {a.remove}
       </Button>
+      {/* The pressed Remove is gone: focus waits on the safe answer. */}
       <Button
+        ref={(node) => {
+          node?.focus();
+        }}
+        size="small"
         onClick={() => {
           setAsking(false);
         }}

@@ -24,6 +24,9 @@ const FACE_COLORS: Record<string, string> = {
 interface SkinHeadProps {
   /** The skin as a data: URL (a 64×64 skin, an HD one, or a vertical strip of frames), or null. */
   texture: string | null;
+  /** A head the core already cut (`skinsHeads`, `skinsMicrosoftHeads`): a square PNG as a
+   * data: URL, drawn in place of one cut from `texture`. */
+  head?: string | null;
   /** Pixels on screen; the head is square. */
   size?: number;
   className?: string | undefined;
@@ -61,17 +64,32 @@ function DefaultHead({ size, className }: { size: number; className: string }) {
  * The front of a player's head from their skin, the hat layer over the face, the
  * way Minecraft draws it: the avatar of a player everywhere in the launcher.
  */
-export function SkinHead({ texture, size = 32, className }: SkinHeadProps) {
-  // The texture that would not load or has no head in it: the default face stands in.
+export function SkinHead({ texture, head = null, size = 32, className }: SkinHeadProps) {
+  // The picture that would not load or has no head in it: the default face stands in.
+  const shown = head ?? texture;
   const [failed, setFailed] = useState<string | null>(null);
   const fail = useCallback(() => {
-    setFailed(texture);
-  }, [texture]);
+    setFailed(shown);
+  }, [shown]);
   const classes = [styles.head, className].filter(Boolean).join(' ');
-  if (texture === null || texture === failed) {
+  if (shown === null || shown === failed || !shown.startsWith('data:image/png;base64,')) {
     return <DefaultHead size={size} className={classes} />;
   }
-  return <TexturedHead texture={texture} size={size} className={classes} onFail={fail} />;
+  if (head !== null) {
+    return (
+      <img
+        className={classes}
+        src={head}
+        width={size}
+        height={size}
+        alt=""
+        aria-hidden="true"
+        draggable={false}
+        onError={fail}
+      />
+    );
+  }
+  return <TexturedHead texture={shown} size={size} className={classes} onFail={fail} />;
 }
 
 function TexturedHead({
