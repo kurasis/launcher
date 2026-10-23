@@ -14,7 +14,8 @@ items go newest release first and are cut into parts of `part_size` (default 12,
 The launcher's own versions, the ones Mojang's list does not have (docs/EXTRA-VERSIONS.md,
 the form's Special tab), are picked with `special` (all of them), `special:<group>`
 (`joke`, `unobfuscated`, `experimental`, `combat`, `first-build`, `early-release`,
-`beta`, `alpha`, `infdev`, `indev`, `classic`) or `special:<id>`. They come after the
+`beta`, `alpha`, `infdev`, `indev`, `classic`) or `special:<id>`; a build the list marks as
+crashing at start (its `note`) is played only by its id. They come after the
 Mojang items, in the list's order. The plan reads the list the launcher reads
 (`upd.lapi.sh/versions/manifest.json`) for each version's name: its row starts with it and
 the form says "Selected: <name>" (an earlier build: its id). The test opens the Special

@@ -78,7 +78,7 @@ fn repository_list() -> Value {
                 "releaseTime": v["releaseTime"], "server": v["server"], "sha1": v["sha1"],
                 "size": v["descriptor"].as_str().unwrap().len(),
             });
-            for key in ["title", "variant"] {
+            for key in ["title", "variant", "note"] {
                 if !v[key].is_null() {
                     entry[key] = v[key].clone();
                 }
@@ -210,6 +210,8 @@ fn entries_out_of_bounds_refuse_the_whole_list() {
         changed("title", json!("<script>\u{0}")),
         changed("group", json!("other")),
         changed("variant", json!("second-build")),
+        changed("note", json!("works")),
+        changed("note", json!("Crashes at start")),
         changed("type", json!("pending")),
         changed("releaseTime", json!("yesterday")),
         changed("sha1", json!("B".repeat(40))),

@@ -253,6 +253,7 @@ describe('CreateInstanceForm', () => {
         title: 'Minecraft 2.0',
         group: 'joke',
         variant: null,
+        note: null,
         server: false,
       },
     });
@@ -266,12 +267,37 @@ describe('CreateInstanceForm', () => {
       "Selected: \u20682.0 Blue\u2069 · Available from the launcher's server",
     );
     expect(screen.getByLabelText('Name')).toHaveValue('2.0 Blue');
+    expect(screen.queryByText(/crashes at start/)).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Create installation' }));
     await waitFor(() => {
       expect(calls.find((c) => c.cmd === 'create_instance')?.args).toMatchObject({
         request: { payload: { displayName: '2.0 Blue', versionId: '2.0-blue' } },
       });
     });
+  });
+
+  it('warns that a build crashes at start', async () => {
+    const view = catalog('available');
+    view.versions.push({
+      id: 'in-20100124-2310',
+      versionType: 'old_alpha',
+      releaseTime: '2010-01-24T23:10:00+00:00',
+      verified: false,
+      availability: 'available',
+      special: {
+        name: 'in-20100124-2310',
+        title: null,
+        group: 'indev',
+        variant: null,
+        note: 'crashes-at-start',
+        server: false,
+      },
+    });
+    setup(view);
+    await screen.findByText('Selected: 1.21.1');
+    fireEvent.click(screen.getByRole('tab', { name: /Special/ }));
+    fireEvent.click(screen.getByRole('button', { name: /in-20100124-2310/ }));
+    expect(screen.getByText(/This build crashes at start/)).toBeVisible();
   });
 
   it('does not offer an estimate without the catalog', async () => {

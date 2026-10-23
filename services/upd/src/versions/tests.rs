@@ -61,6 +61,17 @@ fn the_repository_data_is_a_valid_list_in_order() {
     ] {
         assert!(list.versions.iter().any(|v| v.id == id), "{id}");
     }
+    // Builds that do not start carry a note the launcher shows.
+    let noted: Vec<_> = list
+        .versions
+        .iter()
+        .filter(|v| v.note.is_some())
+        .map(|v| v.id.as_str())
+        .collect();
+    assert_eq!(
+        noted,
+        ["in-20100129-1452", "in-20100128-2304", "in-20100124-2310"]
+    );
     let sums = sums(&meta).unwrap();
     assert!(parse_sums(&sums).unwrap().len() > meta.len());
 }
@@ -76,6 +87,11 @@ fn foreign_hosts_and_mismatched_files_are_refused() {
     assert!(build(&serde_json::to_vec(&value).unwrap(), 1).is_err());
     let mut value: Value = serde_json::from_slice(&good).unwrap();
     value["versions"][0]["id"] = Value::from("../x");
+    assert!(build(&serde_json::to_vec(&value).unwrap(), 1).is_err());
+    let mut value: Value = serde_json::from_slice(&good).unwrap();
+    value["versions"][0]["note"] = Value::from("crashes-at-start");
+    assert!(build(&serde_json::to_vec(&value).unwrap(), 1).is_ok());
+    value["versions"][0]["note"] = Value::from("<b>works</b>");
     assert!(build(&serde_json::to_vec(&value).unwrap(), 1).is_err());
 }
 
