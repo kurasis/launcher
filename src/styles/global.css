@@ -54,6 +54,10 @@ a {
 /* The sticky launch bar never hides the control that has focus. */
 html {
   scroll-padding-block-end: calc(var(--bar-height) + var(--space-3));
+  /* A classic scrollbar (Windows) keeps its place whether the page scrolls or not:
+     otherwise its coming and going narrows and widens the page, and the feed's
+     mosaic, which measures its cards, could lay itself out again without end. */
+  scrollbar-gutter: stable;
 }
 
 ::selection {

@@ -131,7 +131,7 @@ export function NotePanel({
           <div className={styles.translation}>
             <button
               type="button"
-              className={styles.chip}
+              className={styles.pill}
               aria-pressed={original}
               onClick={() => {
                 setOriginal((value) => !value);

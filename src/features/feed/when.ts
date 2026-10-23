@@ -34,3 +34,53 @@ export function dateTime(iso: string): string {
   if (Number.isNaN(time)) return '';
   return new Date(time).toLocaleString(numberLocale(), { dateStyle: 'medium', timeStyle: 'short' });
 }
+
+const WEEK_MS = 7 * 24 * 3600 * 1000;
+
+/**
+ * A card's date: "yesterday", "3 days ago" within a week, then the day and month
+ * ("21 October"), with the year when it is not this year's.
+ */
+export function cardDate(iso: string, now: number = Date.now()): string {
+  const time = Date.parse(iso);
+  if (Number.isNaN(time)) return '';
+  if (Math.abs(now - time) < WEEK_MS) return relativeTime(iso, now);
+  const date = new Date(time);
+  const thisYear = date.getFullYear() === new Date(now).getFullYear();
+  return date.toLocaleDateString(
+    numberLocale(),
+    thisYear
+      ? { day: 'numeric', month: 'long' }
+      : { day: 'numeric', month: 'long', year: 'numeric' },
+  );
+}
+
+/** "now", for something live, in the interface language. */
+export function liveNow(): string {
+  return new Intl.RelativeTimeFormat(numberLocale(), { numeric: 'auto' }).format(0, 'second');
+}
+
+/**
+ * A video's length: "4:05", "12:34", or "1:02:05" from an hour, in the digits the
+ * interface uses for numbers. Null when the length is unknown.
+ */
+export function videoLength(seconds: number | null): string | null {
+  if (seconds === null || !Number.isFinite(seconds) || seconds < 0) return null;
+  const whole = Math.floor(seconds);
+  const hours = Math.floor(whole / 3600);
+  const minutes = Math.floor((whole % 3600) / 60);
+  const rest = whole % 60;
+  const plain = new Intl.NumberFormat(numberLocale(), { useGrouping: false });
+  const two = new Intl.NumberFormat(numberLocale(), {
+    minimumIntegerDigits: 2,
+    useGrouping: false,
+  });
+  return hours > 0
+    ? `${plain.format(hours)}:${two.format(minutes)}:${two.format(rest)}`
+    : `${plain.format(minutes)}:${two.format(rest)}`;
+}
+
+/** A count in the interface's digits, such as "12,345" or "12 345". */
+export function count(value: number): string {
+  return new Intl.NumberFormat(numberLocale()).format(value);
+}

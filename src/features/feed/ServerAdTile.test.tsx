@@ -65,7 +65,8 @@ describe('ServerAdTile', () => {
     );
     expect(screen.getByText('<img src=x onerror=alert(1)>')).toBeTruthy();
     expect(document.querySelector('img[src="x"]')).toBeNull();
-    expect(screen.getByText('Ad')).toBeTruthy();
+    // Marked as an ad on the picture and in the line under the text.
+    expect(screen.getAllByText('Ad')).toHaveLength(2);
     expect(screen.getByText('12 of 100 online')).toBeTruthy();
     expect(screen.getByTitle('12 of 100 online').textContent).toContain('12');
     expect(screen.getByText('play.example.net')).toBeTruthy();
@@ -203,7 +204,7 @@ describe('ServerAdTile', () => {
     expect(screen.getByRole('button', { name: 'Play, 1.21.4 · downloads first' })).toBeTruthy();
   });
 
-  it('shows a server that does not answer, and the icon as the picture', () => {
+  it('shows a server that does not answer, and the icon as the picture and beside the name', () => {
     listen();
     const icon = 'data:image/png;base64,iVBORw0KGgo=';
     render(
@@ -223,7 +224,8 @@ describe('ServerAdTile', () => {
     const banner = 'data:image/jpeg;base64,/9j/4AAQ';
     render(<ServerAdTile ad={adFixture({ icon, banner })} snapshot={snapshotFixture()} />);
     expect(document.querySelectorAll(`img[src="${banner}"]`)).toHaveLength(1);
-    expect(document.querySelector(`img[src="${icon}"]`)).toBeNull();
+    // The icon is left only beside the server's name.
+    expect(document.querySelectorAll(`img[src="${icon}"]`)).toHaveLength(1);
   });
 
   it('downloads nothing for a licensed server without a Microsoft account', async () => {

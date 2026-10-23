@@ -1,71 +1,38 @@
-/* The start page feed (D-067). Only logical properties (inline/block), so the
-   page mirrors for right-to-left languages by itself. */
+/* The start page feed (D-067) as a mosaic (D-072, concept A, variant 2): a header,
+   filter pills, then cards of different heights in columns. Only logical properties
+   (inline/block), so the page mirrors for right-to-left languages by itself. */
 
 .screen {
-  display: grid;
-  gap: var(--space-4);
-}
-
-.toolbar {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-3);
-}
-
-.screenTitle {
-  font-size: var(--font-size-xl);
-  font-weight: 800;
-  letter-spacing: -0.02em;
-}
-
-.layout {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(15rem, 20rem);
-  gap: var(--space-6);
-  align-items: start;
-}
-
-@media (max-width: 960px) {
-  .layout {
-    grid-template-columns: minmax(0, 1fr);
-  }
-}
-
-.main,
-.side {
   display: grid;
   gap: var(--space-4);
   min-inline-size: 0;
 }
 
-/* The side column stays in view while the list scrolls. */
-@media (min-width: 961px) {
-  .side {
-    position: sticky;
-    inset-block-start: var(--space-4);
-  }
+/* ---------------------------------------------------------------- Page head */
+
+.pageHead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3) var(--space-4);
+}
+
+.pageTitle {
+  font-size: var(--font-size-xl);
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.pageActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
 }
 
 .muted {
   color: var(--color-text-muted);
   font-size: var(--font-size-sm);
-}
-
-.eyebrow {
-  font-size: var(--font-size-xs);
-  font-weight: 700;
-  letter-spacing: var(--letter-spacing-caps);
-  text-transform: uppercase;
-  color: var(--color-accent);
-}
-
-.actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-2);
-  align-items: center;
 }
 
 .badges {
@@ -75,302 +42,22 @@
   gap: var(--space-2);
 }
 
-.panelLike {
-  background: var(--color-surface);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-panel);
-  backdrop-filter: blur(var(--blur));
-}
-
-/* Continue playing. */
-.continue {
-  composes: panelLike;
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-3) var(--space-6);
-  padding: var(--space-4) var(--space-6);
-}
-
-.continueName {
-  font-size: var(--font-size-lg);
-  font-weight: 700;
-  overflow-wrap: anywhere;
-}
-
-/* The newest version. */
-.hero {
-  composes: panelLike;
-  display: grid;
-  grid-template-columns: minmax(0, 2fr) minmax(0, 3fr);
-  overflow: hidden;
-}
-
-.heroPicture {
-  inline-size: 100%;
-  block-size: 100%;
-  min-block-size: 12rem;
-  object-fit: cover;
-  background: var(--color-neutral-bg);
-}
-
-.heroText {
-  display: grid;
-  align-content: start;
-  gap: var(--space-3);
-  padding: var(--space-6);
-  grid-column: 2;
-}
-
-.hero > .heroText:only-child {
-  grid-column: 1 / -1;
-}
-
-.heroTitle {
-  font-size: var(--font-size-xl);
-  font-weight: 800;
-  letter-spacing: -0.02em;
-  overflow-wrap: anywhere;
-}
-
-@media (max-width: 640px) {
-  .hero {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  .heroText {
-    grid-column: 1;
-  }
-}
-
-/* Filter chips. */
-.chips {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-2);
-}
-
-.chip {
-  font: inherit;
-  font-size: var(--font-size-sm);
-  font-weight: 600;
-  color: var(--color-text);
-  background: var(--color-neutral-bg);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-pill);
-  padding: var(--space-1) var(--space-4);
-  cursor: pointer;
-}
-
-.chip:hover {
-  border-color: var(--color-border-strong);
-}
-
-.chip[aria-pressed='true'] {
-  color: var(--color-accent-contrast);
-  background: var(--color-accent);
-  border-color: var(--color-accent);
-}
-
 .visuallyHidden {
   position: absolute;
   inline-size: 1px;
   block-size: 1px;
+  margin: -1px;
   overflow: hidden;
   clip-path: inset(50%);
   white-space: nowrap;
 }
 
-/* Parts. */
-.part {
-  display: grid;
-  gap: var(--space-3);
-  min-inline-size: 0;
-}
-
-.partTitle {
-  font-size: var(--font-size-lg);
-  font-weight: 700;
-}
-
-.side .part {
-  background: var(--color-surface);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-panel);
-  backdrop-filter: blur(var(--blur));
-  padding: var(--space-4);
-}
-
-/* The endless list: patch notes, news, videos and streams mixed, as a grid of
-   tiles, as many to a row as fit. */
-.list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(12rem, 1fr));
-  gap: var(--space-4) var(--space-3);
-}
-
-.listEnd {
-  display: grid;
-  justify-items: center;
-  gap: var(--space-2);
-  min-block-size: 1px;
-  padding-block: var(--space-2);
-  text-align: center;
-}
-
-.tile {
-  position: relative;
-  display: grid;
-  grid-template-rows: auto 1fr;
-  gap: var(--space-2);
-  block-size: 100%;
-  border-radius: var(--radius-md);
-}
-
-.tile:focus-within {
-  outline: 2px solid var(--color-focus);
-  outline-offset: 3px;
-}
-
-.tile:hover .preview {
-  border-color: var(--color-border-strong);
-}
-
-.tile:hover .preview img {
-  transform: scale(1.03);
-}
-
-.tileText {
-  display: grid;
-  align-content: start;
-  gap: var(--space-1);
-  min-inline-size: 0;
-}
-
-.tileTitle {
-  font-size: var(--font-size-sm);
-  font-weight: 700;
-  line-height: 1.3;
-  display: -webkit-box;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
-  overflow: hidden;
-  overflow-wrap: anywhere;
-}
-
-.tileLine {
-  color: var(--color-text-muted);
-  font-size: var(--font-size-xs);
-  display: -webkit-box;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
-  overflow: hidden;
-  overflow-wrap: anywhere;
-}
-
-/* Inline, so the title's two-line clamp counts its lines. */
-.tileTitle .cardButton {
-  display: inline;
-}
-
-/* The title's button covers the whole tile. */
-.cardButton {
-  font: inherit;
-  color: inherit;
-  text-align: start;
-  background: none;
-  border: none;
-  padding: 0;
-  cursor: pointer;
-}
-
-.cardButton:focus-visible {
-  outline: none;
-}
-
-.cardButton::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-}
-
-/* A tile without a picture: its version or name on a plain cover. */
-.cover {
-  display: grid;
-  place-items: center;
-  block-size: 100%;
-  padding: var(--space-3);
-  font-size: var(--font-size-lg);
-  font-weight: 800;
-  letter-spacing: -0.02em;
-  text-align: center;
-  overflow-wrap: anywhere;
-  color: var(--color-accent);
-  background: linear-gradient(135deg, var(--color-neutral-bg), var(--color-surface));
-}
-
-.preview {
-  position: relative;
-  display: block;
-  aspect-ratio: 16 / 9;
-  overflow: hidden;
-  border-radius: var(--radius-md);
-  background: var(--color-neutral-bg);
-  border: 1px solid var(--color-border);
-}
-
-.preview img {
-  inline-size: 100%;
-  block-size: 100%;
-  object-fit: cover;
-  display: block;
-  transition: transform 0.2s ease;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .preview img {
-    transition: none;
-  }
-}
-
-.overlayBadge {
-  position: absolute;
-  inset-block-start: var(--space-2);
-  inset-inline-start: var(--space-2);
+/* A notice with a button beside its words. */
+.noticeRow {
   display: flex;
-  border-radius: var(--radius-pill);
-  /* Readable on any picture. */
-  background: var(--color-hero-scrim);
-  backdrop-filter: blur(4px);
-}
-
-/* The side column. */
-.sideList {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: grid;
+  flex-wrap: wrap;
+  align-items: center;
   gap: var(--space-3);
-}
-
-.sideItemTitle {
-  font-weight: 600;
-}
-
-.cycleTarget {
-  font-size: var(--font-size-lg);
-  font-weight: 700;
-}
-
-.counts {
-  margin: 0;
-  padding-inline-start: var(--space-4);
 }
 
 /* A link that is a button: the core opens it in the browser. */
@@ -382,11 +69,788 @@
   padding: 0;
   text-align: start;
   text-decoration: underline;
+  text-underline-offset: 0.2em;
   cursor: pointer;
 }
 
 .link:hover {
   text-decoration-thickness: 2px;
+}
+
+.link:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 2px;
+  border-radius: calc(var(--radius-sm) / 2);
+}
+
+/* ------------------------------------- Updates, events and tips: one strip */
+
+.side {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 14rem), 1fr));
+  gap: var(--space-3);
+}
+
+.part {
+  display: grid;
+  align-content: start;
+  gap: var(--space-1);
+  min-inline-size: 0;
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+  font-size: var(--font-size-sm);
+  overflow-wrap: anywhere;
+}
+
+.partTitle {
+  color: var(--color-text-muted);
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+}
+
+.cycleTarget {
+  font-size: var(--font-size-md);
+  font-weight: 600;
+}
+
+.counts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 var(--space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  color: var(--color-text-2);
+}
+
+.sideList {
+  display: grid;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.sideItemTitle {
+  font-weight: 600;
+}
+
+/* ------------------------------------------------------------ Filter pills */
+
+.pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+/* The same pills as Installations: a chosen one takes the selected color and an
+   accent border. */
+.pill {
+  min-block-size: 1.75rem;
+  padding: 0 var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-pill);
+  background: var(--color-surface);
+  color: var(--color-text-2);
+  font: inherit;
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+  cursor: pointer;
+  transition:
+    background-color var(--motion-duration) ease-out,
+    border-color var(--motion-duration) ease-out,
+    color var(--motion-duration) ease-out;
+}
+
+.pill:hover {
+  background: var(--color-hover);
+}
+
+.pill[aria-pressed='true'] {
+  border-color: var(--color-accent);
+  background: var(--color-selected);
+  color: var(--color-accent-text);
+  font-weight: 600;
+}
+
+.pill:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 2px;
+}
+
+/* ------------------------------------------------------------------ Mosaic */
+
+/* Three columns from 40rem of room (every window from 820 px wide), two from 24rem,
+   else one. Measured (Card.tsx), the rows are a few pixels each and every card spans
+   as many as it is tall, so the grid puts each card at the top of the shortest
+   column while the DOM keeps the feed's order. */
+.mosaicFrame {
+  container: feed-mosaic / inline-size;
+  min-inline-size: 0;
+}
+
+.mosaic {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-4);
+  align-items: start;
+}
+
+.mosaic[data-measured='true'] {
+  grid-auto-rows: var(--space-1);
+  row-gap: 0;
+}
+
+@container feed-mosaic (min-width: 24rem) {
+  .mosaic {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@container feed-mosaic (min-width: 40rem) {
+  .mosaic {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+.cell {
+  min-inline-size: 0;
+}
+
+/* Placeholders: one set for each column there is. */
+.fromOne {
+  display: block;
+}
+
+.fromTwo,
+.fromThree {
+  display: none;
+}
+
+@container feed-mosaic (min-width: 24rem) {
+  .fromTwo {
+    display: block;
+  }
+}
+
+@container feed-mosaic (min-width: 40rem) {
+  .fromThree {
+    display: block;
+  }
+}
+
+.skeleton {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-2);
+}
+
+.skeletonWide,
+.skeletonTall,
+.skeletonLine,
+.skeletonShort {
+  background: var(--color-border-soft);
+}
+
+.skeletonWide,
+.skeletonTall {
+  inline-size: 100%;
+  aspect-ratio: 16 / 9;
+  border-radius: var(--radius-lg);
+}
+
+.skeletonTall {
+  aspect-ratio: 4 / 5;
+}
+
+.skeletonLine,
+.skeletonShort {
+  block-size: 0.875rem;
+  inline-size: 80%;
+  border-radius: var(--radius-sm);
+}
+
+.skeletonShort {
+  block-size: 0.75rem;
+  inline-size: 50%;
+}
+
+.listEnd {
+  display: grid;
+  justify-items: center;
+  gap: var(--space-2);
+  min-block-size: 1px;
+  padding-block: var(--space-2);
+  text-align: center;
+}
+
+.loadingMore {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+}
+
+.spinner {
+  flex: none;
+  inline-size: 1.125rem;
+  block-size: 1.125rem;
+  border: 2px solid var(--color-border-strong);
+  border-block-start-color: var(--color-accent);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(1turn);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .spinner {
+    animation: none;
+  }
+}
+
+/* -------------------------------------------------------------------- Card */
+
+/* Picture, title and source on the paper ground: no surface, border or padding. */
+.card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-inline-size: 0;
+}
+
+.media {
+  position: relative;
+  overflow: hidden;
+  border-radius: var(--radius-lg);
+  background: var(--color-neutral-bg);
+}
+
+.media > img {
+  display: block;
+  inline-size: 100%;
+  block-size: 100%;
+  object-fit: cover;
+}
+
+/* A card without a picture: its version or name on a plain cover. */
+.cover {
+  display: grid;
+  place-items: center;
+  block-size: 100%;
+  padding: var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: inherit;
+  background: var(--color-surface-sunken);
+  color: var(--color-text-2);
+  font-size: var(--font-size-lg);
+  font-weight: 700;
+  line-height: 1.3;
+  text-align: center;
+  overflow-wrap: anywhere;
+}
+
+.cardTitle {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  color: var(--color-text);
+  font-size: var(--font-size-md);
+  font-weight: 600;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.pressable:hover .cardTitle {
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
+}
+
+/* Inline, so the title's two-line clamp counts its lines. */
+.cardButton {
+  display: inline;
+  padding: 0;
+  border: none;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+
+.cardButton:focus-visible {
+  outline: none;
+}
+
+/* The title's button covers the whole card, and draws its focus ring around it. */
+.cardButton::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: var(--radius-lg);
+}
+
+.cardButton:focus-visible::after {
+  outline: 2px solid var(--color-focus);
+  outline-offset: var(--space-1);
+}
+
+/* Source, kind and date. */
+.meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-2);
+  min-inline-size: 0;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-xs);
+  line-height: 1.4;
+}
+
+.source {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  min-inline-size: 0;
+  max-inline-size: 100%;
+}
+
+.sourceName {
+  min-inline-size: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.star {
+  color: var(--color-warning-text);
+}
+
+.date {
+  flex: none;
+  white-space: nowrap;
+}
+
+.avatar {
+  flex: none;
+  inline-size: 1.25rem;
+  block-size: 1.25rem;
+  border-radius: 50%;
+  background: var(--color-neutral-bg);
+  object-fit: cover;
+}
+
+.letter {
+  display: grid;
+  place-items: center;
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  line-height: 1;
+}
+
+/* A server's icon: pixelated with rounded corners, like a skin head. */
+.square {
+  border-radius: 20%;
+  image-rendering: pixelated;
+}
+
+/* Letter avatars take the status pairs, which hold 4.5:1 in both themes. */
+.tone0 {
+  background: var(--color-success-bg);
+  color: var(--color-success-text);
+}
+
+.tone1 {
+  background: var(--color-info-bg);
+  color: var(--color-info-text);
+}
+
+.tone2 {
+  background: var(--color-warning-bg);
+  color: var(--color-warning-text);
+}
+
+.tone3 {
+  background: var(--color-danger-bg);
+  color: var(--color-danger-text);
+}
+
+.tone4 {
+  background: var(--color-neutral-bg);
+  color: var(--color-neutral-text);
+}
+
+.kind {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  padding: 0.125rem var(--space-2);
+  border: 1px solid transparent;
+  border-radius: var(--radius-pill);
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  line-height: 1.4;
+  white-space: nowrap;
+}
+
+.kindNeutral {
+  background: var(--color-neutral-bg);
+  color: var(--color-neutral-text);
+}
+
+.kindSuccess {
+  background: var(--color-success-bg);
+  color: var(--color-success-text);
+}
+
+.kindWarning {
+  background: var(--color-warning-bg);
+  color: var(--color-warning-text);
+}
+
+.kindDanger {
+  background: var(--color-danger-bg);
+  color: var(--color-danger-text);
+}
+
+.kindOutline {
+  border-color: var(--color-border-strong);
+  color: var(--color-text-muted);
+}
+
+/* Under the meta line and above the card's button: Install or Play for a version. */
+.cardExtra {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+/* A video the player opened already: fainter, until hovered or focused. */
+.watched .media,
+.watched .cardTitle {
+  opacity: 0.55;
+  transition: opacity var(--motion-duration) ease-out;
+}
+
+.watched:hover .media,
+.watched:hover .cardTitle,
+.watched:focus-within .media,
+.watched:focus-within .cardTitle {
+  opacity: 1;
+}
+
+/* --------------------------------------------------------- On the picture */
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  min-block-size: 1.5rem;
+  min-inline-size: 0;
+  padding-inline: var(--space-2);
+  border-radius: calc(var(--radius-sm) * 0.75);
+  background: var(--color-media-chip);
+  color: var(--color-media-chip-text);
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.topStart,
+.bottomStart,
+.bottomEnd {
+  position: absolute;
+}
+
+.topStart {
+  inset-block-start: var(--space-2);
+  inset-inline-start: var(--space-2);
+}
+
+.bottomStart {
+  inset-block-end: var(--space-2);
+  inset-inline-start: var(--space-2);
+}
+
+.bottomEnd {
+  inset-block-end: var(--space-2);
+  inset-inline-end: var(--space-2);
+}
+
+.chipVersion {
+  min-block-size: 1.75rem;
+  padding-inline: var(--space-3);
+  font-size: var(--font-size-sm);
+}
+
+.chipLive {
+  background: var(--color-live);
+  color: var(--color-live-text);
+}
+
+.chipAd {
+  background: var(--color-hero-scrim);
+  color: var(--color-text-2);
+}
+
+/* The round Play in the middle of a video. A media control: it does not mirror. */
+.play,
+.playSmall {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  inline-size: 3.5rem;
+  block-size: 3.5rem;
+  margin: auto;
+  border-radius: 50%;
+  background: var(--color-media-chip);
+  color: var(--color-media-chip-text);
+  pointer-events: none;
+}
+
+.playSmall {
+  inline-size: 2.75rem;
+  block-size: 2.75rem;
+}
+
+.filled {
+  fill: currentcolor;
+  stroke: none;
+}
+
+/* A card's ⋯ menu, at the picture's top end, above the title's button. It shows on
+   hover, on focus and while open. */
+.cardMenu {
+  position: absolute;
+  inset-block-start: var(--space-2);
+  inset-inline-end: var(--space-2);
+  z-index: 2;
+  opacity: 0;
+  transition: opacity var(--motion-duration) ease-out;
+}
+
+.card:hover .cardMenu,
+.card:focus-within .cardMenu {
+  opacity: 1;
+}
+
+/* Open, its list goes over the launch bar (z-index 4) on a card near the bottom. */
+.cardMenu:has([aria-expanded='true']) {
+  z-index: 7;
+  opacity: 1;
+}
+
+.menuButton {
+  display: grid;
+  place-items: center;
+  inline-size: 1.75rem;
+  block-size: 1.75rem;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: var(--color-media-chip);
+  color: var(--color-media-chip-text);
+  cursor: pointer;
+}
+
+/* The menu's name is its tooltip and accessible name; only the icon shows. */
+.menuButton > span {
+  position: absolute;
+  inline-size: 1px;
+  block-size: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.menuButton:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 2px;
+}
+
+/* ------------------------------------------------------- Server ad (D-069) */
+
+/* Without a banner: the server's icon, sharp and pixelated, on a plain ground, in
+   the room above Play. */
+.adMedia {
+  display: grid;
+  place-items: center;
+  padding-block-end: calc(var(--control-height) + var(--space-2));
+  border: 1px solid var(--color-border);
+  background: var(--color-surface-sunken);
+}
+
+.media > .adBanner {
+  position: absolute;
+  inset: 0;
+}
+
+.media > .adIcon {
+  inline-size: auto;
+  block-size: 60%;
+  aspect-ratio: 1;
+  border-radius: var(--radius-md);
+  object-fit: contain;
+  image-rendering: pixelated;
+}
+
+/* Players online and Play, along the picture's bottom edge. */
+.adBar {
+  position: absolute;
+  inset-inline: var(--space-2);
+  inset-block-end: var(--space-2);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.adPlay {
+  flex: 0 1 auto;
+  min-inline-size: 0;
+  margin-inline-start: auto;
+}
+
+.adPlayLabel {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.adLine {
+  color: var(--color-text-muted);
+  font-size: var(--font-size-xs);
+  overflow-wrap: anywhere;
+}
+
+.adError {
+  margin: 0;
+  color: var(--color-danger-text);
+  font-size: var(--font-size-xs);
+}
+
+/* An ad's versions, over its picture under the ⋯ button. */
+.adMenu {
+  position: absolute;
+  inset-block-start: 2.75rem;
+  inset-inline-end: var(--space-2);
+  /* Over the launch bar (z-index 4) on a tile near the bottom. */
+  z-index: 7;
+  display: grid;
+  gap: 2px;
+  inline-size: min(14rem, calc(100% - 2 * var(--space-2)));
+  max-block-size: 16rem;
+  overflow-y: auto;
+  padding: var(--space-2);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-solid);
+  box-shadow: var(--shadow-raised);
+}
+
+.adMenu p {
+  margin: 0 0 var(--space-1);
+  font-size: var(--font-size-xs);
+}
+
+.adMenuItem {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-2);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: var(--font-size-sm);
+  text-align: start;
+  cursor: pointer;
+}
+
+.adMenuItem span:last-child {
+  align-self: center;
+  font-size: var(--font-size-xs);
+  white-space: nowrap;
+}
+
+.adMenuItem:hover,
+.adMenuItem[aria-checked='true'] {
+  background: var(--color-accent-soft);
+}
+
+.adMenuItem[aria-checked='true'] {
+  font-weight: 600;
+}
+
+/* ------------------------------------------------------------ Add a channel */
+
+.addRoot {
+  position: relative;
+}
+
+.addPanel {
+  position: absolute;
+  top: calc(100% + var(--space-2));
+  inset-inline-end: 0;
+  z-index: 6;
+  display: grid;
+  gap: var(--space-3);
+  inline-size: min(22rem, calc(100vw - 2 * var(--space-4)));
+  padding: var(--space-3);
+  background: var(--color-surface-raised);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-raised);
+}
+
+.addPanel fieldset {
+  display: flex;
+  gap: var(--space-3);
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.addPanel legend {
+  margin-block-end: var(--space-1);
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+}
+
+.addPanel label {
+  display: grid;
+  gap: var(--space-1);
+  font-size: var(--font-size-sm);
+}
+
+.addPanel fieldset label {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.addPanel form {
+  display: grid;
+  gap: var(--space-2);
 }
 
 /* The note dialog: wide, in the middle of the window. */
@@ -397,8 +861,7 @@
   align-items: center;
   justify-content: center;
   padding: var(--space-6);
-  background: rgb(0 0 0 / 55%);
-  backdrop-filter: blur(3px);
+  background: var(--color-scrim);
   /* Above the download button in the corner. */
   z-index: 50;
 }
@@ -501,7 +964,7 @@
   font-family: var(--font-mono);
   font-size: 0.92em;
   background: var(--color-neutral-bg);
-  border-radius: 4px;
+  border-radius: calc(var(--radius-sm) / 2);
   padding: 0 0.25em;
 }
 
@@ -510,340 +973,4 @@
   flex-wrap: wrap;
   gap: var(--space-2);
   margin-block-start: auto;
-}
-
-/* A server ad (D-069): the same tile as the others. Its picture is the
-   server's icon, large and sharp on a blur of itself, with the label, players
-   online and Play on it; its ⋯ menu holds the version, the address and Report. */
-.adPreview {
-  display: grid;
-  place-items: center;
-}
-
-.preview .adBackdrop {
-  position: absolute;
-  inset: -1.5rem;
-  inline-size: calc(100% + 3rem);
-  block-size: calc(100% + 3rem);
-  filter: blur(22px) saturate(1.3);
-}
-
-.preview .adBanner {
-  position: absolute;
-  inset: 0;
-}
-
-.adShade {
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(180deg, rgb(15 23 42 / 10%), rgb(15 23 42 / 35%));
-}
-
-.preview .adIcon {
-  position: relative;
-  inline-size: auto;
-  block-size: 44%;
-  aspect-ratio: 1;
-  border-radius: var(--radius-md);
-  box-shadow: 0 8px 24px rgb(0 0 0 / 35%);
-  image-rendering: pixelated;
-}
-
-.tile:hover .preview .adIcon {
-  transform: none;
-}
-
-/* Players online and Play, along the picture's bottom edge. */
-.adBar {
-  position: absolute;
-  inset-inline: var(--space-2);
-  inset-block-end: var(--space-2);
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-1);
-}
-
-.adOnline {
-  display: flex;
-  align-items: center;
-  gap: var(--space-1);
-  min-inline-size: 0;
-  padding: 0.125rem var(--space-2);
-  border-radius: var(--radius-pill);
-  background: rgb(15 23 42 / 62%);
-  color: #ffffff;
-  font-size: var(--font-size-xs);
-  font-weight: 600;
-  white-space: nowrap;
-}
-
-.adOnline [aria-hidden='true']:not(:first-child) {
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.adDot,
-.adDotOff {
-  flex: none;
-  inline-size: 0.45rem;
-  block-size: 0.45rem;
-  border-radius: 50%;
-  background: #4ade80;
-}
-
-.adDotOff {
-  background: #94a3b8;
-}
-
-.adPlay {
-  flex: none;
-  margin-inline-start: auto;
-  display: flex;
-  align-items: center;
-  gap: var(--space-1);
-  padding: 0.3125rem var(--space-3) 0.3125rem 0.625rem;
-  border: 0;
-  border-radius: var(--radius-pill);
-  background: var(--color-accent);
-  color: var(--color-accent-contrast);
-  font: inherit;
-  font-size: var(--font-size-sm);
-  font-weight: 700;
-  line-height: 1.2;
-  white-space: nowrap;
-  box-shadow: 0 4px 14px var(--color-glow);
-  cursor: pointer;
-}
-
-.adPlay svg {
-  flex: none;
-  inline-size: 0.7rem;
-  block-size: 0.7rem;
-  fill: currentcolor;
-}
-
-.adPlay:disabled {
-  opacity: 0.75;
-  cursor: default;
-}
-
-.adPlay:focus-visible,
-.adMenuItem:focus-visible {
-  outline: 2px solid var(--color-focus);
-  outline-offset: 2px;
-}
-
-/* The versions, over the picture under the ⋯ button. */
-.adMenu {
-  position: absolute;
-  inset-block-start: 2.75rem;
-  inset-inline-end: var(--space-2);
-  /* Over the launch bar (z-index 4) on a tile near the bottom. */
-  z-index: 7;
-  display: grid;
-  gap: 2px;
-  inline-size: min(14rem, calc(100% - 2 * var(--space-2)));
-  max-block-size: 16rem;
-  overflow-y: auto;
-  padding: var(--space-2);
-  border: 1px solid var(--color-border-strong);
-  border-radius: var(--radius-md);
-  background: var(--color-surface-solid);
-  box-shadow: var(--shadow-raised);
-}
-
-.adMenu p {
-  margin: 0 0 var(--space-1);
-  font-size: var(--font-size-xs);
-}
-
-.adMenuItem {
-  display: flex;
-  justify-content: space-between;
-  gap: var(--space-2);
-  padding: var(--space-1) var(--space-2);
-  border: 0;
-  border-radius: var(--radius-sm);
-  background: transparent;
-  color: inherit;
-  font: inherit;
-  font-size: var(--font-size-sm);
-  text-align: start;
-  cursor: pointer;
-}
-
-.adMenuItem span:last-child {
-  align-self: center;
-  font-size: var(--font-size-xs);
-  white-space: nowrap;
-}
-
-.adMenuItem:hover,
-.adMenuItem[aria-checked='true'] {
-  background: var(--color-accent-soft);
-}
-
-.adMenuItem[aria-checked='true'] {
-  font-weight: 700;
-}
-
-.adError {
-  margin: 0;
-  color: var(--color-danger-text);
-  font-size: var(--font-size-xs);
-}
-
-/* A tile's ⋯ menu, in the picture's corner, above the title's button. */
-.tileMenu {
-  position: absolute;
-  inset-block-start: var(--space-2);
-  inset-inline-end: var(--space-2);
-  z-index: 2;
-}
-
-/* Open, its list goes over the launch bar (z-index 4) on a tile near the bottom. */
-.tileMenu:has([aria-expanded='true']) {
-  z-index: 7;
-}
-
-.tileMenuButton {
-  display: grid;
-  place-items: center;
-  inline-size: 2rem;
-  block-size: 2rem;
-  padding: 0;
-  border: 0;
-  border-radius: var(--radius-pill);
-  font: inherit;
-  font-size: var(--font-size-lg);
-  font-weight: 800;
-  line-height: 1;
-  color: var(--color-text);
-  /* Readable on any picture. */
-  background: var(--color-hero-scrim);
-  backdrop-filter: blur(4px);
-  cursor: pointer;
-  opacity: 0.85;
-}
-
-.tileMenuButton:hover,
-.tileMenuButton[aria-expanded='true'] {
-  opacity: 1;
-}
-
-.tileMenuButton:focus-visible {
-  outline: 2px solid var(--color-focus);
-  outline-offset: 2px;
-  opacity: 1;
-}
-
-/* The chips' row ends with + to add a channel. */
-.chipsRow {
-  display: flex;
-  align-items: flex-start;
-  gap: var(--space-2);
-}
-
-.chipsRow .chips {
-  flex: 1;
-}
-
-.addRoot {
-  position: relative;
-}
-
-.addButton {
-  display: grid;
-  place-items: center;
-  inline-size: 2.25rem;
-  block-size: 2.25rem;
-  padding: 0;
-  font: inherit;
-  font-size: var(--font-size-lg);
-  font-weight: 700;
-  line-height: 1;
-  color: var(--color-text);
-  background: var(--color-neutral-bg);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-pill);
-  cursor: pointer;
-}
-
-.addButton:hover,
-.addButton[aria-expanded='true'] {
-  border-color: var(--color-border-strong);
-}
-
-.addButton:focus-visible {
-  outline: 2px solid var(--color-focus);
-  outline-offset: 2px;
-}
-
-.addPanel {
-  position: absolute;
-  top: calc(100% + var(--space-2));
-  inset-inline-end: 0;
-  z-index: 6;
-  display: grid;
-  gap: var(--space-3);
-  inline-size: min(22rem, calc(100vw - 2 * var(--space-4)));
-  padding: var(--space-3);
-  background: var(--color-surface-raised);
-  border: 1px solid var(--color-border-strong);
-  border-radius: var(--radius-md);
-  box-shadow: var(--shadow-raised);
-}
-
-.addPanel fieldset {
-  display: flex;
-  gap: var(--space-3);
-  margin: 0;
-  padding: 0;
-  border: 0;
-}
-
-.addPanel legend {
-  margin-block-end: var(--space-1);
-  font-size: var(--font-size-sm);
-  font-weight: 600;
-}
-
-.addPanel label {
-  display: grid;
-  gap: var(--space-1);
-  font-size: var(--font-size-sm);
-}
-
-.addPanel fieldset label {
-  display: flex;
-  align-items: center;
-  gap: var(--space-1);
-}
-
-.addPanel form {
-  display: grid;
-  gap: var(--space-2);
-}
-
-/* A notice with a button beside its words. */
-.noticeRow {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--space-3);
-}
-
-/* A video the player opened already: fainter, until hovered or focused. */
-.watched .preview,
-.watched .tileTitle {
-  opacity: 0.55;
-  transition: opacity var(--motion-duration) ease-out;
-}
-
-.watched:hover .preview,
-.watched:hover .tileTitle,
-.watched:focus-within .preview,
-.watched:focus-within .tileTitle {
-  opacity: 1;
 }

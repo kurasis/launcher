@@ -84,6 +84,13 @@
 
   /* Text laid over a picture in the feed. */
   --color-hero-scrim: rgb(255 255 255 / 86%);
+  /* Chips and the play circle on feed pictures (length, viewers, version, ⋯): they sit on
+     pictures, not on the theme, so both themes share them. */
+  --color-media-chip: rgb(8 20 14 / 74%);
+  --color-media-chip-text: #ffffff;
+  /* The live badge on a stream's picture: white text at 4.9:1 in both themes. */
+  --color-live: #c8442b;
+  --color-live-text: #ffffff;
 
   /* Installation tiles (InstanceTile): a top band over a body, like a block. The pair
      is chosen from the installation's id, so a tile keeps its colors in any order. */
@@ -172,6 +179,10 @@
     --color-bar: #16211b;
 
     --color-hero-scrim: rgb(15 23 19 / 82%);
+    --color-media-chip: rgb(8 20 14 / 74%);
+    --color-media-chip-text: #ffffff;
+    --color-live: #c8442b;
+    --color-live-text: #ffffff;
 
     --tile-1-top: #4f9a4a;
     --tile-1-body: #6a4630;
@@ -240,6 +251,10 @@
   --color-bar: #16211b;
 
   --color-hero-scrim: rgb(15 23 19 / 82%);
+  --color-media-chip: rgb(8 20 14 / 74%);
+  --color-media-chip-text: #ffffff;
+  --color-live: #c8442b;
+  --color-live-text: #ffffff;
 
   --tile-1-top: #4f9a4a;
   --tile-1-body: #6a4630;

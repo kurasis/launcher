@@ -1,11 +1,14 @@
 import { useEffect, useId, useRef, useState } from 'react';
-import { type MenuItem, MoreMenu } from '../../app/MoreMenu';
-import { StatusBadge } from '../../components/StatusBadge';
+import type { MenuItem } from '../../app/MoreMenu';
+import { Button } from '../../components/Button';
+import { Icon } from '../../components/Icon';
 import type { AdEvent, AppSnapshot, ServerAd } from '../../lib/contracts';
 import { describeIpcError, ipc } from '../../lib/ipc';
 import { strings } from '../../lib/strings';
 import { openReview } from '../reviews/openReview';
+import { Avatar, CardMenu, KindChip } from './Card';
 import { installationOf } from './installations';
+import { ASPECT } from './mosaic';
 import styles from './Feed.module.css';
 
 const t = strings.feed;
@@ -54,9 +57,9 @@ function vanillaOf(snapshot: AppSnapshot, version: string) {
 type Stage = 'idle' | 'creating' | 'installing' | 'starting';
 
 /**
- * An ad for a Minecraft server (D-069), shaped like the feed's other tiles:
- * the server's icon as the picture, with the label, players online and Play
- * on it; the name, the text and the address under it. Play installs the
+ * An ad for a Minecraft server (D-069), shaped like the feed's other cards:
+ * the banner or the server's icon as the picture, with the label, players
+ * online and Play on it; the text, the server and its address under it. Play installs the
  * chosen version when no vanilla installation of it is ready, then starts the
  * game straight into the server. The ⋯ menu picks another version the server
  * lets in, copies the address and reports the ad. Views and presses are
@@ -307,20 +310,83 @@ export function ServerAdTile({ ad, snapshot }: { ad: ServerAd; snapshot: AppSnap
   );
 
   return (
-    <article ref={tile} className={styles.tile} aria-label={`${s.label}: ${ad.name}`}>
-      <span className={styles.tileMenu}>
-        <MoreMenu
-          label="⋯"
-          ariaLabel={s.menu({ name: ad.name })}
-          buttonClassName={styles.tileMenuButton}
-          caret={false}
-          current={false}
-          entries={entries}
-          onOpen={() => {
-            count(ad, 'menu');
-          }}
-        />
-      </span>
+    <article ref={tile} className={styles.card} aria-label={`${s.label}: ${ad.name}`}>
+      <div
+        className={[styles.media, styles.adMedia].join(' ')}
+        style={{ aspectRatio: ASPECT.wide }}
+      >
+        {ad.banner !== null ? (
+          <img className={styles.adBanner} src={ad.banner} alt="" />
+        ) : ad.icon !== null ? (
+          <img className={styles.adIcon} src={ad.icon} alt="" />
+        ) : (
+          <span className={styles.cover} dir="auto">
+            {ad.name}
+          </span>
+        )}
+        <span className={[styles.chip, styles.chipAd, styles.topStart].join(' ')}>{s.label}</span>
+        <div className={styles.adBar}>
+          {players !== null && (
+            <span className={styles.chip} title={playersInFull ?? undefined}>
+              {ad.up !== false && <Icon name="users" size={14} />}
+              <bdi aria-hidden="true">{players}</bdi>
+              <span className={styles.visuallyHidden}>{playersInFull}</span>
+            </span>
+          )}
+          <Button
+            ref={playButton}
+            variant="primary"
+            className={styles.adPlay}
+            aria-label={`${label}, ${hint}`}
+            title={hint}
+            disabled={working || running}
+            aria-controls={versions ? versionsId : undefined}
+            onClick={() => void play()}
+          >
+            <Icon name="play" size={16} className={styles.filled} />
+            <span className={styles.adPlayLabel}>{label}</span>
+          </Button>
+        </div>
+      </div>
+      <h3 className={styles.cardTitle} dir="auto">
+        {ad.text}
+      </h3>
+      <p className={styles.meta}>
+        <span className={styles.source}>
+          <Avatar key={ad.icon ?? ''} src={ad.icon} name={ad.name} square />
+          <bdi className={styles.sourceName}>{ad.name}</bdi>
+        </span>
+        <KindChip tone="outline" label={s.label} />
+        <span className={styles.date}>{s.kind}</span>
+      </p>
+      <p className={styles.adLine} role={copied ? 'status' : undefined}>
+        {copied ? (
+          s.copied
+        ) : (
+          <>
+            <span dir="ltr">{ad.address}</span> · <span dir="ltr">{version}</span>
+            {ad.licensed === true && ` · ${s.licensedOnly}`}
+          </>
+        )}
+      </p>
+      {ad.erid !== null && <p className={styles.adLine}>{s.erid({ erid: ad.erid })}</p>}
+      {running && !inGame && stage === 'idle' && (
+        <p className={styles.adLine} role="status">
+          {t.gameRunning}
+        </p>
+      )}
+      {error !== null && (
+        <p className={styles.adError} role="alert">
+          {error}
+        </p>
+      )}
+      <CardMenu
+        label={s.menu({ name: ad.name })}
+        entries={entries}
+        onOpen={() => {
+          count(ad, 'menu');
+        }}
+      />
       {versions && (
         <div
           ref={versionsRef}
@@ -348,87 +414,13 @@ export function ServerAdTile({ ad, snapshot }: { ad: ServerAd; snapshot: AppSnap
                   pick(choice);
                 }}
               >
-                <span>{choice}</span>
+                <span dir="ltr">{choice}</span>
                 <span className={styles.muted}>{mark}</span>
               </button>
             );
           })}
         </div>
       )}
-      <div className={[styles.preview, styles.adPreview].join(' ')}>
-        {ad.banner !== null ? (
-          <img className={styles.adBanner} src={ad.banner} alt="" />
-        ) : ad.icon !== null ? (
-          <>
-            <img className={styles.adBackdrop} src={ad.icon} alt="" aria-hidden="true" />
-            <span className={styles.adShade} aria-hidden="true" />
-            <img className={styles.adIcon} src={ad.icon} alt="" />
-          </>
-        ) : (
-          <span className={styles.cover} dir="auto">
-            {ad.name}
-          </span>
-        )}
-        <span className={styles.overlayBadge}>
-          <StatusBadge tone="neutral" label={s.label} />
-        </span>
-        <div className={styles.adBar}>
-          {players !== null && (
-            <span className={styles.adOnline} title={playersInFull ?? undefined}>
-              <span
-                className={ad.up === false ? styles.adDotOff : styles.adDot}
-                aria-hidden="true"
-              />
-              <span aria-hidden="true">{players}</span>
-              <span className={styles.visuallyHidden}>{playersInFull}</span>
-            </span>
-          )}
-          <button
-            ref={playButton}
-            type="button"
-            className={styles.adPlay}
-            aria-label={`${label}, ${hint}`}
-            title={hint}
-            disabled={working || running}
-            aria-controls={versions ? versionsId : undefined}
-            onClick={() => void play()}
-          >
-            <svg viewBox="0 0 10 10" aria-hidden="true" focusable="false">
-              <path d="M1 0 9 5 1 10z" />
-            </svg>
-            {label}
-          </button>
-        </div>
-      </div>
-      <div className={styles.tileText}>
-        <h3 className={styles.tileTitle} dir="auto">
-          {ad.name}
-        </h3>
-        <p className={styles.tileLine} dir="auto">
-          {ad.text}
-        </p>
-        <p className={styles.tileLine} role={copied ? 'status' : undefined}>
-          {copied ? (
-            s.copied
-          ) : (
-            <>
-              <span dir="ltr">{ad.address}</span> · {version}
-              {ad.licensed === true && ` · ${s.licensedOnly}`}
-            </>
-          )}
-        </p>
-        {ad.erid !== null && <p className={styles.tileLine}>{s.erid({ erid: ad.erid })}</p>}
-        {running && !inGame && stage === 'idle' && (
-          <p className={styles.tileLine} role="status">
-            {t.gameRunning}
-          </p>
-        )}
-        {error !== null && (
-          <p className={styles.adError} role="alert">
-            {error}
-          </p>
-        )}
-      </div>
     </article>
   );
 }

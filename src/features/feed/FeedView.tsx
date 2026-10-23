@@ -1,7 +1,7 @@
 import { type ReactNode, useCallback, useEffect, useId, useState } from 'react';
 import { Button } from '../../components/Button';
+import { Icon } from '../../components/Icon';
 import { Notice } from '../../components/Notice';
-import { StatusBadge } from '../../components/StatusBadge';
 import type {
   AppSnapshot,
   ChannelMark,
@@ -13,7 +13,6 @@ import type {
   FeedVideo,
   FeedMarks,
   FeedView as FeedAnswer,
-  InstanceSummary,
   MarkKind,
   MarkList,
   NoteCard,
@@ -21,16 +20,12 @@ import type {
 } from '../../lib/contracts';
 import { feedProblem, ipc } from '../../lib/ipc';
 import { strings } from '../../lib/strings';
-import { useCommand } from '../../lib/useCommand';
-import { gameLabel } from '../instances/loaderLabel';
 import { AddChannel } from './AddChannel';
-import { FeedList } from './FeedList';
+import { FeedList, FeedLoading } from './FeedList';
 import type { FeedFilter } from './list';
 import { NotePanel } from './NotePanel';
-import { kindLabel, visibleParts } from './parts';
-import { pictureUrl } from './pictureUrl';
-import { VersionAction } from './VersionAction';
-import { dateTime, relativeTime, shortDate } from './when';
+import { visibleParts } from './parts';
+import { dateTime, relativeTime } from './when';
 import styles from './Feed.module.css';
 
 const t = strings.feed;
@@ -55,134 +50,6 @@ interface FeedViewProps {
   onOpenInstallations: (instanceId: string | null) => void;
   /** Opens the new-installation form with this game version chosen. */
   onInstallVersion: (versionId: string) => void;
-}
-
-/** The installation played last, if any was. */
-function lastPlayed(instances: InstanceSummary[]): InstanceSummary | null {
-  let found: InstanceSummary | null = null;
-  for (const instance of instances) {
-    if (instance.lastPlayedAt === null) continue;
-    if (found?.lastPlayedAt == null || instance.lastPlayedAt > found.lastPlayedAt) {
-      found = instance;
-    }
-  }
-  return found;
-}
-
-/** "Continue playing": the installation played last, with Play. */
-function ContinueCard({
-  snapshot,
-  onOpenInstallations,
-}: Pick<FeedViewProps, 'snapshot' | 'onOpenInstallations'>) {
-  const play = useCommand((requestId: string, id: string) => ipc.launchGame(id, requestId));
-  const instance = lastPlayed(snapshot.instances);
-  const headingId = useId();
-  if (instance === null || instance.lastPlayedAt === null) return null;
-  const running = snapshot.currentRun !== null;
-  const busy = snapshot.activeOperation !== null;
-  const ready = instance.health === 'ready';
-  return (
-    <section className={styles.continue} aria-labelledby={headingId}>
-      <div>
-        <h2 id={headingId} className={styles.eyebrow}>
-          {t.continueTitle}
-        </h2>
-        <p className={styles.continueName}>
-          {instance.displayName} <span className={styles.muted}>{gameLabel(instance)}</span>
-        </p>
-        <p className={styles.muted}>
-          {t.lastPlayed({ when: relativeTime(instance.lastPlayedAt) })}
-        </p>
-        {running && <p role="status">{t.gameRunning}</p>}
-      </div>
-      <div className={styles.actions}>
-        {ready && !running && (
-          <Button
-            variant="primary"
-            disabled={busy || play.pending}
-            onClick={() => void play.run(instance.id)}
-          >
-            {play.pending ? t.starting : t.play}
-          </Button>
-        )}
-        <Button
-          variant={ready && !running ? 'secondary' : 'primary'}
-          onClick={() => {
-            onOpenInstallations(instance.id);
-          }}
-        >
-          {t.openInstallations}
-        </Button>
-      </div>
-      {play.error !== null && <Notice tone="danger">{play.error}</Notice>}
-    </section>
-  );
-}
-
-/** The newest version: its patch note, and Play or Install for it. */
-function HeroCard({
-  snapshot,
-  feed,
-  note,
-  onOpen,
-  onOpenInstallations,
-  onInstallVersion,
-}: {
-  snapshot: AppSnapshot;
-  feed: Feed;
-  note: NoteCard | null;
-  onOpen: (card: NoteCard) => void;
-  onOpenInstallations: (instanceId: string | null) => void;
-  onInstallVersion: (versionId: string) => void;
-}) {
-  const headingId = useId();
-  const release = feed.latest.release;
-  const version = note !== null ? note.version : (release?.id ?? null);
-  if (note === null && release === null) return null;
-  const image = pictureUrl(note?.image ?? null);
-  const kind = note !== null ? kindLabel(note) : t.kinds.release;
-  const date = note?.date ?? release?.date ?? '';
-  return (
-    <section className={styles.hero} aria-labelledby={headingId}>
-      {image !== null && <img className={styles.heroPicture} src={image} alt="" />}
-      <div className={styles.heroText}>
-        <p className={styles.eyebrow}>{t.newVersion}</p>
-        <div className={styles.badges}>
-          <StatusBadge tone="success" label={kind} />
-          {version !== null && (
-            <span className={styles.muted} dir="ltr">
-              {version}
-            </span>
-          )}
-          <span className={styles.muted}>{shortDate(date)}</span>
-        </div>
-        <h2 id={headingId} className={styles.heroTitle}>
-          {note?.title ?? t.versionTitle({ version: release?.id ?? '' })}
-        </h2>
-        {note !== null && note.summary !== '' && <p>{note.summary}</p>}
-        <div className={styles.actions}>
-          {note !== null && (
-            <Button
-              variant="primary"
-              onClick={() => {
-                onOpen(note);
-              }}
-            >
-              {t.readNote}
-            </Button>
-          )}
-          {version !== null && (
-            <VersionAction
-              snapshot={snapshot}
-              version={version}
-              onOpenInstallations={onOpenInstallations}
-              onInstallVersion={onInstallVersion}
-            />
-          )}
-        </div>
-      </div>
-    </section>
-  );
 }
 
 /** A titled part of the feed. */
@@ -218,6 +85,14 @@ function Side({
   onLink: (url: string) => void;
 }) {
   const cycle = showCycle ? feed.cycle : null;
+  if (
+    cycle === null &&
+    feed.events.length === 0 &&
+    feed.announcements.length === 0 &&
+    feed.tip === null
+  ) {
+    return null;
+  }
   return (
     <aside className={styles.side} aria-label={t.sideLabel}>
       {cycle !== null && (
@@ -295,9 +170,10 @@ function Side({
 }
 
 /**
- * The start page feed (D-067): the installation played last, the newest
- * version, patch notes and news, videos and streams, and our own events and
- * tips. Everything comes from the core, which asks only feed.lapi.sh.
+ * The start page feed (D-067), as a mosaic (D-072): the newest version, patch
+ * notes and news, videos and streams, and our own events and tips. Play for the
+ * chosen installation is in the launch bar. Everything comes from the core,
+ * which asks only feed.lapi.sh.
  */
 export function FeedView({ snapshot, onOpenInstallations, onInstallVersion }: FeedViewProps) {
   const settings = snapshot.settings.feed;
@@ -506,22 +382,26 @@ export function FeedView({ snapshot, onOpenInstallations, onInstallVersion }: Fe
   }, []);
 
   const view = result?.view ?? null;
-  const toolbar = (
-    <div className={styles.toolbar}>
-      <h2 className={styles.screenTitle}>{t.title}</h2>
-      <Button
-        disabled={refreshing}
-        onClick={() => {
-          setRefreshing(true);
-          void fetchFeed(true).finally(() => {
-            setRefreshing(false);
-            setRefreshes((count) => count + 1);
-          });
-        }}
-      >
-        {refreshing ? t.refreshing : t.refresh}
-      </Button>
-    </div>
+  const header = (
+    <header className={styles.pageHead}>
+      <h2 className={styles.pageTitle}>{t.title}</h2>
+      <div className={styles.pageActions}>
+        <AddChannel onAdded={channelAdded} />
+        <Button
+          disabled={refreshing}
+          onClick={() => {
+            setRefreshing(true);
+            void fetchFeed(true).finally(() => {
+              setRefreshing(false);
+              setRefreshes((count) => count + 1);
+            });
+          }}
+        >
+          <Icon name="refresh" size={18} />
+          {refreshing ? t.refreshing : t.refresh}
+        </Button>
+      </div>
+    </header>
   );
 
   const content =
@@ -536,13 +416,13 @@ export function FeedView({ snapshot, onOpenInstallations, onInstallVersion }: Fe
         marks={marks}
         onMark={mark}
         onCopyLink={copyLink}
-        onChannelAdded={channelAdded}
         watched={watched}
         liveTick={liveTick}
         chosen={chosen}
         reload={`${languages} ${String(online)} ${String(settings.snapshots)} ${String(settings.shorts)} ${settings.hidden.join(',')} ${String(refreshes)}`}
         onFilter={setFilter}
         onOpen={setOpen}
+        onLink={openLink}
         onOpenInstallations={onOpenInstallations}
         onInstallVersion={onInstallVersion}
         onPlayVideo={playVideo}
@@ -553,7 +433,7 @@ export function FeedView({ snapshot, onOpenInstallations, onInstallVersion }: Fe
 
   return (
     <div className={styles.screen}>
-      {toolbar}
+      {header}
       {view?.stale === true && (
         <Notice tone="warning">{t.stale({ date: dateTime(view.feed.generated) })}</Notice>
       )}
@@ -569,22 +449,14 @@ export function FeedView({ snapshot, onOpenInstallations, onInstallVersion }: Fe
           </span>
         </Notice>
       )}
-      <div className={styles.layout}>
-        <div className={styles.main}>
-          <ContinueCard snapshot={snapshot} onOpenInstallations={onOpenInstallations} />
-          {content ??
-            (result?.problem != null ? (
-              <Notice tone="danger">
-                <p>{t.problems[result.problem]}</p>
-              </Notice>
-            ) : (
-              <p role="status">{t.loading}</p>
-            ))}
-        </div>
-        {view !== null && (
-          <Side feed={view.feed} showCycle={settings.snapshots} onLink={openLink} />
-        )}
-      </div>
+      {content ??
+        (result?.problem != null ? (
+          <Notice tone="danger">
+            <p>{t.problems[result.problem]}</p>
+          </Notice>
+        ) : (
+          <FeedLoading />
+        ))}
       {open !== null && (
         <NotePanel
           key={open.id}
@@ -610,7 +482,6 @@ interface FeedPartsProps {
   marks: FeedMarks;
   onMark: (channel: ChannelMark, list: MarkList | null) => void;
   onCopyLink: (url: string) => void;
-  onChannelAdded: (place: MarkKind, name: string) => void;
   watched: ReadonlySet<string>;
   liveTick: number;
   chosen: FeedFilter;
@@ -618,6 +489,8 @@ interface FeedPartsProps {
   reload: string;
   onFilter: (filter: FeedFilter) => void;
   onOpen: (card: NoteCard) => void;
+  /** Opens an event's or announcement's link in the browser. */
+  onLink: (url: string) => void;
   onOpenInstallations: (instanceId: string | null) => void;
   onInstallVersion: (versionId: string) => void;
   onPlayVideo: (video: FeedVideo) => void;
@@ -625,7 +498,10 @@ interface FeedPartsProps {
   ads: ServerAd[];
 }
 
-/** The newest version, the chips and the endless list they choose. */
+/**
+ * Under All, updates, events and tips; then the filter pills and the endless
+ * mosaic they choose, the newest version first.
+ */
 function FeedParts({
   snapshot,
   feed,
@@ -636,13 +512,13 @@ function FeedParts({
   marks,
   onMark,
   onCopyLink,
-  onChannelAdded,
   watched,
   liveTick,
   chosen,
   reload,
   onFilter,
   onOpen,
+  onLink,
   onOpenInstallations,
   onInstallVersion,
   onPlayVideo,
@@ -659,40 +535,32 @@ function FeedParts({
         : !parts.hidden.has(item),
   );
   const filter = filters.includes(chosen) ? chosen : 'all';
-  const heroNote = parts.versions[0] ?? null;
+  const newest = parts.versions[0] ?? null;
+  const featured =
+    filter === 'all' && (newest !== null || feed.latest.release !== null)
+      ? { note: newest, release: feed.latest.release }
+      : null;
 
   return (
     <>
-      {filter === 'all' && (
-        <HeroCard
-          snapshot={snapshot}
-          feed={feed}
-          note={heroNote}
-          onOpen={onOpen}
-          onOpenInstallations={onOpenInstallations}
-          onInstallVersion={onInstallVersion}
-        />
-      )}
-      <div className={styles.chipsRow}>
-        <div className={styles.chips} role="group" aria-labelledby={filterLabel}>
-          <span id={filterLabel} className={styles.visuallyHidden}>
-            {t.filters}
-          </span>
-          {filters.map((item) => (
-            <button
-              key={item}
-              type="button"
-              className={styles.chip}
-              aria-pressed={filter === item}
-              onClick={() => {
-                onFilter(item);
-              }}
-            >
-              {t.filter[item]}
-            </button>
-          ))}
-        </div>
-        <AddChannel onAdded={onChannelAdded} />
+      {filter === 'all' && <Side feed={feed} showCycle={settings.snapshots} onLink={onLink} />}
+      <div className={styles.pills} role="group" aria-labelledby={filterLabel}>
+        <span id={filterLabel} className={styles.visuallyHidden}>
+          {t.filters}
+        </span>
+        {filters.map((item) => (
+          <button
+            key={item}
+            type="button"
+            className={styles.pill}
+            aria-pressed={filter === item}
+            onClick={() => {
+              onFilter(item);
+            }}
+          >
+            {t.filter[item]}
+          </button>
+        ))}
       </div>
       <FeedList
         feed={feed}
@@ -707,8 +575,10 @@ function FeedParts({
         liveTick={liveTick}
         filter={filter}
         key={`${filter} ${reload}`}
-        skip={filter === 'all' ? (heroNote?.id ?? null) : null}
+        featured={featured}
         onOpen={onOpen}
+        onOpenInstallations={onOpenInstallations}
+        onInstallVersion={onInstallVersion}
         onPlayVideo={onPlayVideo}
         onPlayStream={onPlayStream}
         ads={ads}
