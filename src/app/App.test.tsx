@@ -841,20 +841,39 @@ describe('App', () => {
     expect(screen.queryByRole('menu')).toBeNull();
   });
 
-  it('lets an item of the More menu be clicked where a press takes focus off it', async () => {
+  it('keeps the More menu working with the mouse where presses move focus', async () => {
     fakeBackend(snapshotFixture());
     render(<App />);
     await screen.findByText(/No installations yet/);
     fireEvent.click(moreButton());
     const about = within(screen.getByRole('menu')).getByRole('menuitem', { name: 'About' });
-    // WebKit on macOS: buttons take no focus from the mouse, so the press moves focus
-    // from the focused item to the screen.
-    fireEvent.pointerDown(about);
+    // A press in the menu, on an item or its padding, leaves focus where it is.
+    expect(fireEvent.mouseDown(screen.getByRole('menu'))).toBe(false);
+    expect(fireEvent.mouseDown(about)).toBe(false);
+
+    // WebKit on macOS: a press on the button takes focus off the item to the screen;
+    // the click then closes the menu instead of finding it closed and opening it.
+    fireEvent.pointerDown(moreButton(), { button: 0 });
     fireEvent.blur(focused(), { relatedTarget: screen.getByRole('main') });
     expect(screen.getByRole('menu')).toBeVisible();
-    fireEvent.pointerUp(about);
-    fireEvent.click(about);
+    fireEvent.pointerUp(moreButton(), { button: 0 });
+    fireEvent.click(moreButton());
     expect(screen.queryByRole('menu')).toBeNull();
+
+    // The same press dragged off the button clicks nothing: the menu, with focus
+    // outside it, closes.
+    fireEvent.click(moreButton());
+    expect(screen.getByRole('menu')).toBeVisible();
+    fireEvent.pointerDown(moreButton(), { button: 0 });
+    fireEvent.blur(focused(), { relatedTarget: screen.getByRole('main') });
+    screen.getByRole('main').focus();
+    fireEvent.pointerUp(document.body, { button: 0 });
+    await waitFor(() => {
+      expect(screen.queryByRole('menu')).toBeNull();
+    });
+
+    // Items still choose.
+    chooseFromMore('About');
     expect(screen.getByRole('button', { name: 'More: About' })).toHaveAttribute(
       'aria-current',
       'page',

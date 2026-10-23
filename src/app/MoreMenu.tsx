@@ -52,9 +52,10 @@ export function MoreMenu({
   const rootRef = useRef<HTMLDivElement>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
   const itemRefs = useRef<(HTMLButtonElement | null)[]>([]);
-  // A press on the button or an item is under way: WebKit on macOS moves focus off
-  // the item on such a press (buttons take no focus from the mouse there), and that
-  // blur must not close the menu before the click lands.
+  // A press on the button is under way: WebKit on macOS moves focus off the open
+  // menu on such a press (buttons take no focus from the mouse there), and that blur
+  // must not close the menu before the click toggles it. (Presses in the menu itself
+  // keep focus where it is.)
   const pressing = useRef(false);
   /** The focused item while open; null while closed. */
   const [active, setActive] = useState<number | null>(null);
@@ -78,13 +79,29 @@ export function MoreMenu({
 
   useEffect(() => {
     const released = () => {
+      if (!pressing.current) return;
+      pressing.current = false;
+      // After the click, if any: a press dragged off the button clicks nothing, and a
+      // menu left open with focus outside it would not hear its keys.
+      window.setTimeout(() => {
+        const root = rootRef.current;
+        if (root === null || root.querySelector('[role="menu"]') === null) return;
+        if (!root.contains(document.activeElement)) setActive(null);
+      }, 0);
+    };
+    const dropped = () => {
       pressing.current = false;
     };
     document.addEventListener('pointerup', released, true);
     document.addEventListener('pointercancel', released, true);
+    // A context menu takes the release; the page never sees it.
+    document.addEventListener('contextmenu', dropped, true);
+    window.addEventListener('blur', dropped);
     return () => {
       document.removeEventListener('pointerup', released, true);
       document.removeEventListener('pointercancel', released, true);
+      document.removeEventListener('contextmenu', dropped, true);
+      window.removeEventListener('blur', dropped);
     };
   }, []);
 
@@ -168,14 +185,14 @@ export function MoreMenu({
     <div
       className={styles.menuRoot}
       ref={rootRef}
-      onPointerDown={() => {
-        pressing.current = true;
+      onPointerDown={(event) => {
+        if (event.button === 0) pressing.current = true;
       }}
       onBlur={(event) => {
         // Focus moving to another element (the palette after Ctrl+K, say) closes the
         // menu. Focus leaving the window has no target and keeps it open: Windows UI
         // Automation, which the package smoke test drives the menu with, does that.
-        // So does a press inside the menu, which its own click handles.
+        // So does a press on the button, which its own click handles.
         const to = event.relatedTarget;
         if (!open || pressing.current) return;
         if (to instanceof Node && !event.currentTarget.contains(to)) setActive(null);
@@ -222,6 +239,11 @@ export function MoreMenu({
           role="menu"
           aria-labelledby={buttonId}
           className={[styles.menu, menuClassName].filter(Boolean).join(' ')}
+          onMouseDown={(event) => {
+            // A press in the menu (an item, its padding, a separator) leaves focus on
+            // the item that has it, so the keys keep working; the click chooses.
+            event.preventDefault();
+          }}
           onKeyDown={onMenuKeyDown}
           onKeyUp={(event) => {
             if (event.key === ' ') event.preventDefault();
