@@ -19,7 +19,8 @@ export interface Committed extends Filters {
 export interface Place {
   draft: Filters;
   committed: Committed;
-  page: ModsSearchPage;
+  /** `null` when the search had not answered or had failed: it is asked again. */
+  page: ModsSearchPage | null;
   scrollY: number;
 }
 

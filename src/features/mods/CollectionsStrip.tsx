@@ -97,14 +97,15 @@ export function CollectionsStrip({ kind, game, loader, instance, onPick }: Props
         )}
         {!all && pages > 1 && (
           <span className={styles.pager}>
+            {/* aria-disabled: a pressed arrow that reaches the end keeps the focus. */}
             <button
               type="button"
               className={[styles.smallButton, styles.iconButton].join(' ')}
               aria-label={t.previousCollections}
               title={t.previousCollections}
-              disabled={at === 0}
+              aria-disabled={at === 0}
               onClick={() => {
-                setPage(at - 1);
+                if (at > 0) setPage(at - 1);
               }}
             >
               <Icon name="prev" size={18} className={styles.mirror} />
@@ -114,9 +115,9 @@ export function CollectionsStrip({ kind, game, loader, instance, onPick }: Props
               className={[styles.smallButton, styles.iconButton].join(' ')}
               aria-label={t.nextCollections}
               title={t.nextCollections}
-              disabled={at >= pages - 1}
+              aria-disabled={at >= pages - 1}
               onClick={() => {
-                setPage(at + 1);
+                if (at < pages - 1) setPage(at + 1);
               }}
             >
               <Icon name="next" size={18} className={styles.mirror} />
@@ -159,6 +160,8 @@ function CollectionTile({
   const t = strings.mods.catalog;
   const titleId = useId();
   const noteId = useId();
+  const fitsId = useId();
+  const note = collectionNote(collection);
   const icons = collection.icons
     .map((icon) => ourPicture(icon))
     .filter((icon): icon is string => icon !== null)
@@ -169,7 +172,7 @@ function CollectionTile({
       type="button"
       className={styles.collection}
       aria-labelledby={titleId}
-      aria-describedby={noteId}
+      aria-describedby={fits ? `${noteId} ${fitsId}` : noteId}
       onClick={onPick}
     >
       <span className={styles.stack} aria-hidden="true">
@@ -180,15 +183,21 @@ function CollectionTile({
           <span className={styles.stackMore}>+{more.toLocaleString(numberLocale())}</span>
         )}
       </span>
-      <span id={titleId} className={styles.collectionName} dir="auto">
+      <span
+        id={titleId}
+        className={styles.collectionName}
+        dir={collection.preset ? undefined : 'auto'}
+      >
         {collectionTitle(collection)}
       </span>
-      <span id={noteId} className={styles.collectionNote} dir="auto">
-        {collectionNote(collection)}
+      <span id={noteId} className={styles.collectionNote} dir={note.own ? 'auto' : undefined}>
+        {note.text}
       </span>
       <span className={styles.collectionFoot}>
         {fits && (
-          <span className={[styles.chip, styles.chipSuccess].join(' ')}>{t.fitsInstallation}</span>
+          <span id={fitsId} className={[styles.chip, styles.chipSuccess].join(' ')}>
+            {t.fitsInstallation}
+          </span>
         )}
         <span className={styles.spacer} />
         <Icon name="chevr" size={16} className={styles.mirror} />

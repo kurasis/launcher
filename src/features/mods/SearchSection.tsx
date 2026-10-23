@@ -51,6 +51,26 @@ const AHEAD = '600px';
 const SORTS: ModsSort[] = ['relevance', 'downloads', 'trending', 'updated', 'new', 'title'];
 /** Category counts the launcher reads at most. */
 const MAX_COUNTS = 200;
+/** The catalog's "Popular this week" stops at this many (`POPULAR` in services/mods/src/api.rs). */
+const POPULAR_WEEK = 20;
+
+/** The page of the list on screen and the search it answers. */
+interface Shown extends ModsSearchPage {
+  for: Committed;
+  /** A later page brought nothing new (the catalog's order moved): the list ends here. */
+  ended: boolean;
+}
+
+/** Where a collection's own size stops the list; its other filters bound the rest. */
+function capOf(collection: ModsCollection | null): number | null {
+  return collection?.preset === true && collection.id === 'popular-week' ? POPULAR_WEEK : null;
+}
+
+/** A collection that is only an order of the catalog, such as the week's popular. */
+function onlyOrder(collection: ModsCollection): boolean {
+  const { sort, since, source, collection: key } = collection.query;
+  return sort !== null && since === null && source === null && key === null;
+}
 
 /** The search for one page of the list. */
 function queryOf(kind: ModsKind, c: Committed, offset: number): ModsSearchQuery {
@@ -141,11 +161,17 @@ export function SearchSection({
   const [committed, setCommitted] = useState<Committed>(
     () => place?.committed ?? { ...draft, categories: [], collection: null },
   );
-  const [page, setPage] = useState<ModsSearchPage | null>(place?.page ?? null);
+  const [page, setPage] = useState<Shown | null>(() =>
+    place?.page == null ? null : { ...place.page, for: place.committed, ended: false },
+  );
   const [error, setError] = useState<string | null>(null);
   // A page after the first that did not come: the list stays, with a retry.
   const [moreFailed, setMoreFailed] = useState(false);
-  const [loading, setLoading] = useState(place === null);
+  // A new search's first page, or the next page of the list.
+  const [pending, setPending] = useState<'first' | 'more' | null>(
+    place?.page == null ? 'first' : null,
+  );
+  const loading = pending !== null;
   const [counts, setCounts] = useState<{ key: string; counts: Map<string, number> } | null>(null);
   const [baseTotal, setBaseTotal] = useState<{ key: string; total: number } | null>(null);
   const [mark] = useState<(Mark & { when: string }) | null>(() => {
@@ -157,6 +183,7 @@ export function SearchSection({
   // Answers to older searches are dropped.
   const generation = useRef(0);
   const end = useRef<HTMLDivElement>(null);
+  const tiles = useRef<HTMLUListElement>(null);
   const heading = useRef<HTMLHeadingElement>(null);
   const searchBox = useRef<HTMLInputElement>(null);
   const searchId = useId();
@@ -180,25 +207,31 @@ export function SearchSection({
         .modsSearch(queryOf(kind, next, offset))
         .then((found) => {
           if (current !== generation.current) return;
-          // A collection holds what it says it holds: the week's most popular stop there.
-          const total = Math.min(found.total, next.collection?.count ?? found.total);
+          const total = Math.min(found.total, capOf(next.collection) ?? found.total);
           setError(null);
-          setPage((before) =>
-            offset === 0 || before === null
-              ? { total, hits: found.hits.slice(0, total) }
-              : { total, hits: merged(before.hits, found.hits).slice(0, total) },
-          );
+          setPage((before) => {
+            if (offset === 0 || before === null) {
+              return { total, hits: found.hits.slice(0, total), for: next, ended: false };
+            }
+            const hits = merged(before.hits, found.hits).slice(0, total);
+            return { total, hits, for: next, ended: hits.length === before.hits.length };
+          });
           if (next.categories.length === 0 && offset === 0) {
             setBaseTotal({ key: searchKey(kind, next), total });
           }
         })
         .catch((e: unknown) => {
           if (current !== generation.current) return;
-          if (offset === 0) setError(describeIpcError(e));
-          else setMoreFailed(true);
+          if (offset === 0) {
+            // The list on screen answers another search: only the error stays.
+            setError(describeIpcError(e));
+            setPage(null);
+          } else {
+            setMoreFailed(true);
+          }
         })
         .finally(() => {
-          if (current === generation.current) setLoading(false);
+          if (current === generation.current) setPending(null);
         });
     },
     [kind],
@@ -206,7 +239,7 @@ export function SearchSection({
 
   // The first search, unless the place came back with its list.
   useEffect(() => {
-    if (place === null) fetchPage(committed, 0);
+    if (place?.page == null) fetchPage(committed, 0);
     // Only on open; later searches start from the controls.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fetchPage]);
@@ -231,11 +264,11 @@ export function SearchSection({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [baseKey]);
 
-  const search = (next: Committed, offset: number) => {
-    setLoading(true);
-    if (offset === 0) setError(null);
+  const search = (next: Committed) => {
+    setPending('first');
+    setError(null);
     setMoreFailed(false);
-    fetchPage(next, offset);
+    fetchPage(next, 0);
   };
 
   const commit = (patch: Partial<Committed>) => {
@@ -247,19 +280,17 @@ export function SearchSection({
     setBadGame(false);
     setCommitted(next);
     setDraft({ text: next.text, game: next.game, loader: next.loader, sort: next.sort });
-    search(next, 0);
+    search(next);
   };
 
-  const loadMore = useCallback(() => {
-    if (page === null || loading || error !== null) return;
-    if (page.hits.length >= Math.min(page.total, MAX_HITS)) return;
-    setLoading(true);
-    setMoreFailed(false);
-    fetchPage(committed, page.hits.length);
-  }, [page, loading, error, committed, fetchPage]);
-
   // The next page comes as the end of the list nears the screen.
-  const more = page !== null && page.hits.length < Math.min(page.total, MAX_HITS);
+  const more = page !== null && !page.ended && page.hits.length < Math.min(page.total, MAX_HITS);
+  const loadMore = useCallback(() => {
+    if (page === null || !more || pending !== null || error !== null) return;
+    setPending('more');
+    setMoreFailed(false);
+    fetchPage(page.for, page.hits.length);
+  }, [page, more, pending, error, fetchPage]);
   const watching = typeof IntersectionObserver !== 'undefined';
   useEffect(() => {
     const target = end.current;
@@ -282,31 +313,44 @@ export function SearchSection({
     if (place !== null && place.scrollY > 0) window.scrollTo(0, place.scrollY);
   }, [place]);
 
-  // Kept for the rest of the run, and how far down the list got for later runs.
-  const latest = useRef<{ draft: Filters; committed: Committed; page: ModsSearchPage | null }>({
-    draft,
-    committed,
-    page,
-  });
+  // Kept for the rest of the run. The list only with the search it answers: a search
+  // still on its way or failed is asked again on return.
+  const latest = useRef({ draft, committed, page, error });
   useLayoutEffect(() => {
-    latest.current = { draft, committed, page };
+    latest.current = { draft, committed, page, error };
   });
   useLayoutEffect(
     () => () => {
-      const { draft: d, committed: now, page: p } = latest.current;
-      if (p === null) return;
-      remember(placeKey, { draft: d, committed: now, page: p, scrollY: window.scrollY });
-      if (p.hits.length > PAGE) {
-        writeMark({ search: searchKey(kind, now), count: p.hits.length, at: Date.now() });
-      }
+      const { draft: d, committed: now, page: p, error: failed } = latest.current;
+      const answers =
+        p !== null && failed === null && searchKey(kind, p.for) === searchKey(kind, now);
+      remember(placeKey, {
+        draft: d,
+        committed: now,
+        page: answers ? { total: p.total, hits: p.hits } : null,
+        scrollY: answers ? window.scrollY : 0,
+      });
     },
     [placeKey, kind],
   );
 
+  // How far down the list got, for later runs; written as it grows, since a run can
+  // end with the catalog on screen.
+  useEffect(() => {
+    if (page === null || page.hits.length <= PAGE) return;
+    writeMark({ search: searchKey(kind, page.for), count: page.hits.length, at: Date.now() });
+  }, [page, kind]);
+
+  // "Add to the catalog" at the top starts from this tab's words, and from none elsewhere.
+  useLayoutEffect(() => {
+    draftTextRef.current = draft.text;
+    return () => {
+      draftTextRef.current = '';
+    };
+  }, [draft.text, draftTextRef]);
+
   const change = (patch: Partial<Filters>) => {
-    const next = { ...draft, ...patch };
-    setDraft(next);
-    draftTextRef.current = next.text;
+    setDraft({ ...draft, ...patch });
   };
 
   const loaderName = (loader: string) =>
@@ -328,8 +372,18 @@ export function SearchSection({
     commit({ categories: chosen });
   };
   const pickCollection = (collection: ModsCollection) => {
-    commit({ collection, sort: collection.query.sort ?? committed.sort });
+    // Without an order of its own, a collection lists in its owner's order.
+    commit({ collection, sort: collection.query.sort ?? 'relevance' });
     heading.current?.focus();
+  };
+  const sortBy = (sort: ModsSort) => {
+    const chosen = committed.collection;
+    // A collection that is only an order goes when another order is chosen.
+    commit(
+      chosen !== null && onlyOrder(chosen) && chosen.query.sort !== sort
+        ? { sort, collection: null }
+        : { sort },
+    );
   };
   const reset = () => {
     commit({ categories: [], collection: null });
@@ -348,23 +402,28 @@ export function SearchSection({
     committed.categories.length === 0 &&
     committed.collection === null;
   const title =
-    committed.collection !== null
-      ? collectionTitle(committed.collection)
-      : committed.categories.length === 1
-        ? categoryName(committed.categories[0] ?? '')
-        : committed.categories.length > 1
-          ? c.categoriesChosen({ count: committed.categories.length })
-          : c.allOf[kind];
-  const found =
-    page === null
-      ? null
-      : game !== '' && committed.loader !== ''
-        ? c.foundForBoth({ count: page.total, game, loader: loaderName(committed.loader) })
-        : game !== ''
-          ? c.foundForGame({ count: page.total, game })
-          : committed.loader !== ''
-            ? c.foundForLoader({ count: page.total, loader: loaderName(committed.loader) })
-            : t.results({ count: page.total });
+    committed.collection !== null ? (
+      <bdi>{collectionTitle(committed.collection)}</bdi>
+    ) : committed.categories.length === 1 ? (
+      categoryName(committed.categories[0] ?? '')
+    ) : committed.categories.length > 1 ? (
+      c.categoriesChosen({ count: committed.categories.length })
+    ) : (
+      c.allOf[kind]
+    );
+  // What the list on screen found, for the search it answers.
+  const foundOf = (shown: Shown) => {
+    const g = shown.for.game.trim();
+    const l = shown.for.loader;
+    return g !== '' && l !== ''
+      ? c.foundForBoth({ count: shown.total, game: g, loader: loaderName(l) })
+      : g !== ''
+        ? c.foundForGame({ count: shown.total, game: g })
+        : l !== ''
+          ? c.foundForLoader({ count: shown.total, loader: loaderName(l) })
+          : t.results({ count: shown.total });
+  };
+  const status = pending === 'first' ? t.loading : page === null ? '' : foundOf(page);
   const number = (value: number) => value.toLocaleString(numberLocale());
   // Where an earlier run stopped, on the same search, past its first page.
   const resumeAt =
@@ -375,6 +434,18 @@ export function SearchSection({
 
   return (
     <>
+      {/* First in the focus order, as it is drawn: beside the tabs, or under them. */}
+      <CategoryPanel
+        kind={kind}
+        counts={counts?.key === baseKey ? counts.counts : null}
+        total={baseTotal?.key === baseKey ? baseTotal.total : null}
+        selected={committed.categories}
+        scope={scope}
+        onToggle={toggleCategory}
+        onAll={() => {
+          commit({ categories: [] });
+        }}
+      />
       <div role="tabpanel" aria-labelledby={tabId} className={styles.panel}>
         {kind === 'modpack' && <Notice tone="info">{t.modpacksHint}</Notice>}
         <form
@@ -416,7 +487,7 @@ export function SearchSection({
               }}
             />
           </div>
-          <Button type="submit" disabled={loading && page === null}>
+          <Button type="submit" disabled={pending === 'first' && page === null}>
             <Icon name="search" size={18} />
             {t.find}
           </Button>
@@ -461,7 +532,7 @@ export function SearchSection({
                   className={styles.pill}
                   aria-pressed={committed.sort === sort}
                   onClick={() => {
-                    commit({ sort });
+                    sortBy(sort);
                   }}
                 >
                   {t.sorts[sort]}
@@ -487,7 +558,7 @@ export function SearchSection({
           <div className={styles.applied} role="group" aria-label={c.applied}>
             {committed.collection !== null && (
               <span className={styles.appliedChip}>
-                {collectionTitle(committed.collection)}
+                <bdi>{collectionTitle(committed.collection)}</bdi>
                 <button
                   type="button"
                   className={styles.chipRemove}
@@ -552,7 +623,7 @@ export function SearchSection({
               {title}
             </h3>
             <span className={styles.muted} role="status">
-              {found ?? (loading ? t.loading : '')}
+              {status}
             </span>
           </div>
           {error !== null && (
@@ -561,7 +632,9 @@ export function SearchSection({
                 {error}
                 <Button
                   onClick={() => {
-                    search(committed, 0);
+                    search(committed);
+                    // The notice and its button go while the search runs.
+                    heading.current?.focus();
                   }}
                 >
                   {c.tryAgain}
@@ -569,13 +642,19 @@ export function SearchSection({
               </span>
             </Notice>
           )}
-          {page === null && loading && (
+          {page === null && pending === 'first' && (
             <ul className={styles.tiles} aria-hidden="true">
               <TileSkeletons count={6} />
             </ul>
           )}
           {page !== null && page.hits.length > 0 && (
-            <ul className={styles.tiles}>
+            <ul
+              ref={tiles}
+              className={[styles.tiles, pending === 'first' && styles.stale]
+                .filter(Boolean)
+                .join(' ')}
+              aria-busy={pending === 'first' || undefined}
+            >
               {page.hits.map((hit, index) => (
                 <Fragment key={hit.id}>
                   {index === resumeAt && mark !== null && (
@@ -607,7 +686,7 @@ export function SearchSection({
                   </li>
                 </Fragment>
               ))}
-              {loading && <TileSkeletons count={3} />}
+              {pending === 'more' && <TileSkeletons count={3} />}
             </ul>
           )}
           {page !== null && page.hits.length === 0 && !loading && error === null && (
@@ -620,6 +699,8 @@ export function SearchSection({
                   <Button
                     onClick={() => {
                       fitsToggle(false);
+                      // This block goes while the wider search runs.
+                      heading.current?.focus();
                     }}
                   >
                     {c.showAll}
@@ -639,7 +720,7 @@ export function SearchSection({
           )}
           {page !== null && page.hits.length > 0 && (
             <div className={styles.loadRow} aria-live="polite">
-              {loading ? (
+              {pending === 'more' ? (
                 <>
                   <span className={styles.spinner} aria-hidden="true" />
                   {c.loadingMore({
@@ -650,7 +731,16 @@ export function SearchSection({
               ) : moreFailed ? (
                 <>
                   {c.loadFailed}
-                  <Button onClick={loadMore}>{c.tryAgain}</Button>
+                  <Button
+                    onClick={() => {
+                      // The button goes while the page comes: the list's last project keeps the focus.
+                      const names = tiles.current?.querySelectorAll<HTMLElement>('h4 button');
+                      names?.[names.length - 1]?.focus();
+                      loadMore();
+                    }}
+                  >
+                    {c.tryAgain}
+                  </Button>
                 </>
               ) : more && !watching ? (
                 <Button onClick={loadMore}>{t.more}</Button>
@@ -663,17 +753,6 @@ export function SearchSection({
         </section>
         <BackToTop target={searchBox} />
       </div>
-      <CategoryPanel
-        kind={kind}
-        counts={counts?.key === baseKey ? counts.counts : null}
-        total={baseTotal?.key === baseKey ? baseTotal.total : null}
-        selected={committed.categories}
-        scope={scope}
-        onToggle={toggleCategory}
-        onAll={() => {
-          commit({ categories: [] });
-        }}
-      />
     </>
   );
 }

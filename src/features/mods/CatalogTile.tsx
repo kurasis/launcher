@@ -109,8 +109,7 @@ export function CatalogTile({ hit, onAdd, busy = false, onOpen }: TileProps) {
               disabled={busy}
               onClick={onAdd}
             >
-              <Icon name="plus" size={16} />
-              {t.catalog.add}
+              <span className={styles.actionLabel}>{t.catalog.add}</span>
             </button>
           )}
           <button
@@ -119,7 +118,7 @@ export function CatalogTile({ hit, onAdd, busy = false, onOpen }: TileProps) {
             aria-describedby={titleId}
             onClick={onOpen}
           >
-            {t.catalog.open}
+            <span className={styles.actionLabel}>{t.catalog.open}</span>
           </button>
         </div>
       </div>

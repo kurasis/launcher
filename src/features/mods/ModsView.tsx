@@ -1,4 +1,4 @@
-import { type KeyboardEvent, useEffect, useId, useRef, useState } from 'react';
+import { type KeyboardEvent, useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import { Icon, type IconName } from '../../components/Icon';
 import { Notice } from '../../components/Notice';
 import forms from '../../components/forms.module.css';
@@ -75,6 +75,9 @@ export function ModsView({
   const [waiting, setWaiting] = useState(0);
   const draftText = useRef('');
   const tabs = useRef<HTMLDivElement>(null);
+  // The latest quick add; an answer to an earlier one, or one from before the player
+  // moved on, opens nothing.
+  const quick = useRef(0);
 
   useEffect(() => {
     let live = true;
@@ -96,42 +99,60 @@ export function ModsView({
   const open = (projectId: string) => {
     setCatalogText(null);
     setProject(projectId);
-    window.scrollTo(0, 0);
   };
+
+  // A project's page starts at the top. In a layout effect, after the catalog that
+  // closes has kept how far down it was.
+  useLayoutEffect(() => {
+    if (project !== null) window.scrollTo(0, 0);
+  }, [project]);
+
+  useEffect(() => {
+    quick.current += 1;
+  }, [instance?.id, section, project]);
 
   const choose = (next: ModsSection) => {
     setProject(null);
     onSection(next);
   };
 
-  /** Adds the newest version that fits the installation, or opens the project when none does. */
+  /**
+   * Adds the newest version made for the installation's game version and loader, or
+   * opens the project when none is.
+   */
   const quickAdd = async (hit: ModsHit) => {
     if (instance === null) return;
+    const asked = ++quick.current;
     const wantPack = section === 'datapack';
+    let chosen: ModsVersion | undefined;
     try {
       const versions = await ipc.modsVersions(hit.id, null, null);
       const fitting = (Array.isArray(versions) ? versions : []).filter(
         (version) =>
           (installKind(hit.kind, version) === 'datapack') ===
             (wantPack || hit.kind === 'datapack') &&
+          version.games.includes(instance.versionId) &&
           cannotAdd(installKind(hit.kind, version), version, instance) === null,
       );
-      const chosen = fitting.find((version) => version.channel === 'release') ?? fitting[0];
-      if (chosen === undefined) {
-        open(hit.id);
-        return;
-      }
-      setAdding({
-        instance,
-        versionId: chosen.id,
-        title: hit.title || hit.slug,
-        kind: installKind(hit.kind, chosen),
-        replaces: null,
-        world: null,
-      });
+      chosen = fitting.find((version) => version.channel === 'release') ?? fitting[0];
     } catch {
-      open(hit.id);
+      chosen = undefined;
     }
+    if (asked !== quick.current) return;
+    if (chosen === undefined) {
+      open(hit.id);
+      return;
+    }
+    const target: AddTarget = {
+      instance,
+      versionId: chosen.id,
+      title: hit.title || hit.slug,
+      kind: installKind(hit.kind, chosen),
+      replaces: null,
+      world: null,
+    };
+    // An open dialog keeps its project.
+    setAdding((now) => now ?? target);
   };
 
   // Arrow keys move between the tabs, Home and End to the first and last.
@@ -324,6 +345,7 @@ export function ModsView({
 
       {adding?.kind === 'world' && (
         <WorldDialog
+          key={`${adding.instance.id}:${adding.versionId}`}
           target={adding}
           onClose={() => {
             setAdding(null);
@@ -335,6 +357,7 @@ export function ModsView({
       )}
       {adding !== null && adding.kind !== 'world' && (
         <AddDialog
+          key={`${adding.instance.id}:${adding.versionId}:${adding.replaces ?? ''}`}
           target={adding}
           onClose={() => {
             setAdding(null);

@@ -1987,7 +1987,7 @@
         "previousCollections": "المجموعات السابقة",
         "nextCollections": "المجموعات التالية",
         "fitsInstallation": "تناسب تثبيتك",
-        "andMore": "{names} و{count} أخرى",
+        "andMore": "⁨{names}⁩ و{count} أخرى",
         "presets": {
           "popular-week": "الأكثر رواجًا هذا الأسبوع",
           "new": "جديد في الفهرس",

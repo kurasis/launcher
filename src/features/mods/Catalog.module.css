@@ -116,11 +116,12 @@
     color var(--motion-duration) ease-out;
 }
 
-.smallButton:hover:not(:disabled) {
+.smallButton:hover:not(:disabled, [aria-disabled='true']) {
   background: var(--color-hover);
 }
 
-.smallButton:disabled {
+.smallButton:disabled,
+.smallButton[aria-disabled='true'] {
   cursor: not-allowed;
   opacity: 0.55;
 }
@@ -193,8 +194,11 @@
   align-items: start;
 }
 
+/* The panel's row takes what the tall categories add, so the tabs' row stays as tall
+   as the tabs. */
 .withSide {
   grid-template-columns: minmax(0, 1fr) 15.5rem;
+  grid-template-rows: auto 1fr;
   grid-template-areas:
     'tabs side'
     'panel side';
@@ -572,6 +576,11 @@
   list-style: none;
 }
 
+/* The list of an earlier search while the new one comes. */
+.stale {
+  opacity: 0.6;
+}
+
 .tile {
   position: relative;
   display: grid;
@@ -765,13 +774,17 @@
 }
 
 .actions .smallButton {
+  flex: 0 1 auto;
+  gap: var(--space-1);
   min-block-size: 1.75rem;
   min-inline-size: 0;
   padding: 0 var(--space-2);
   white-space: nowrap;
 }
 
-.actions .smallButton:last-child {
+/* A label that does not fit the narrowest tile ends in an ellipsis. */
+.actionLabel {
+  min-inline-size: 0;
   overflow: hidden;
   text-overflow: ellipsis;
 }
@@ -787,9 +800,10 @@
     opacity: 1;
   }
 
+  /* Hidden from sight only: screen readers still read the loaders and downloads. */
   .tile:hover .facts,
   .tile:focus-within .facts {
-    visibility: hidden;
+    opacity: 0;
   }
 }
 
@@ -926,7 +940,6 @@
   border: 1px solid var(--color-border);
   border-radius: var(--radius-lg);
   background: var(--color-surface);
-  overscroll-behavior: contain;
 }
 
 .sideHead {
@@ -1078,6 +1091,43 @@
   outline-offset: 2px;
 }
 
+/* ---------------------------------------------------------- Contrast themes */
+
+/* Windows contrast themes drop the backgrounds that mark a choice: an outline and the
+   system colors mark it instead. */
+@media (forced-colors: active) {
+  .switch input {
+    forced-color-adjust: none;
+    border-color: CanvasText;
+    background: Canvas;
+  }
+
+  .switch input::after {
+    background: CanvasText;
+  }
+
+  .switch input:checked {
+    border-color: Highlight;
+    background: Highlight;
+  }
+
+  .switch input:checked::after {
+    background: HighlightText;
+  }
+
+  .tab[aria-selected='true'],
+  .pill[aria-pressed='true'],
+  .category[aria-pressed='true'],
+  .smallButton[aria-pressed='true'] {
+    outline: 2px solid Highlight;
+    outline-offset: -2px;
+  }
+
+  .category[aria-pressed='true']::before {
+    background: Highlight;
+  }
+}
+
 /* -------------------------------------------------------------- Narrow room */
 
 /* Under about 47rem of room (an 820 px window with the folded rail) the categories
@@ -1085,6 +1135,7 @@
 @container catalog (max-width: 47rem) {
   .withSide {
     grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: none;
     grid-template-areas:
       'tabs'
       'side'
