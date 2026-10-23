@@ -25,8 +25,8 @@ export function Dialog({ title, onClose, children, wide = false }: DialogProps) 
       window.removeEventListener('keydown', listener);
     };
   }, [onClose]);
-  // On the page body: a panel's backdrop filter would otherwise contain the
-  // fixed overlay.
+  // On the page body: the catalog's container (layout containment) would
+  // otherwise contain the fixed overlay.
   return createPortal(
     <div className={styles.backdrop}>
       <div

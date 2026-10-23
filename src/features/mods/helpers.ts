@@ -30,6 +30,11 @@ export function dateOf(seconds: number): string {
   return new Date(seconds * 1000).toLocaleDateString(numberLocale());
 }
 
+/** The rule the core checks a game version by (`game_version` in src-tauri/src/mods/mod.rs); empty is any. */
+export function validGame(text: string): boolean {
+  return text.length <= 40 && /^[A-Za-z0-9._+ -]*$/.test(text);
+}
+
 /** The loaders a kind of project is filtered by. */
 export function loadersFor(kind: ModsKind): readonly string[] {
   switch (kind) {
