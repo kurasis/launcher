@@ -1,9 +1,12 @@
-import type { PickedTexture } from '../../lib/contracts';
-import { DEFAULT_FRAME_MS, type Texture, parseFrameMs } from './textures';
+import type { ImportNote, PickedTexture } from '../../lib/contracts';
+import { DEFAULT_FRAME_MS, MAX_FRAMES, type Texture, isPngDataUrl, parseFrameMs } from './textures';
+import { nameFromFile } from './closet';
 
 /** A picked file being looked at before it is worn. */
 export interface Draft {
   picked: PickedTexture;
+  /** Its name in the wardrobe, as typed. */
+  name: string;
   /** Skins only: the slim (3-pixel) arms. */
   slim: boolean;
   /** What the file looks like it has, when the frames could be read. */
@@ -25,6 +28,7 @@ export function newDraft(picked: PickedTexture, slim: boolean): Draft {
   const same = texts.every((t) => t === texts[0]);
   return {
     picked,
+    name: nameFromFile(picked.name),
     slim,
     slimGuess: null,
     same,
@@ -63,4 +67,51 @@ export function trialTexture(draft: Draft): Texture {
     frames: picked.frames,
     frameMs: typedDurations(draft).map((ms) => ms ?? DEFAULT_FRAME_MS),
   };
+}
+
+const isCount = (value: unknown, max: number): value is number =>
+  typeof value === 'number' && Number.isInteger(value) && value >= 0 && value <= max;
+
+function isNote(value: unknown): value is ImportNote {
+  if (typeof value !== 'object' || value === null) return false;
+  const note = value as Record<string, unknown>;
+  switch (note.kind) {
+    case 'merged':
+      return isCount(note.from, 10_000) && isCount(note.to, 10_000);
+    case 'everyNth':
+      return isCount(note.from, 10_000) && isCount(note.to, 10_000) && isCount(note.step, 10_000);
+    case 'clamped':
+      return (
+        isCount(note.frame, 10_000) && isCount(note.was, 1_000_000) && isCount(note.now, 1_000_000)
+      );
+    default:
+      return false;
+  }
+}
+
+/** A file the core checked, as it describes one; null for anything else. Its picture
+ * must be a PNG `data:` URL, so nothing is ever loaded from elsewhere. */
+export function pickedOf(value: unknown): PickedTexture | null {
+  if (typeof value !== 'object' || value === null) return null;
+  const p = value as Record<string, unknown>;
+  const ok =
+    (p.kind === 'skin' || p.kind === 'cape') &&
+    typeof p.name === 'string' &&
+    p.name.length <= 1024 &&
+    [64, 128, 256, 512].includes(p.width as number) &&
+    isCount(p.height, 512 * MAX_FRAMES) &&
+    p.height > 0 &&
+    isCount(p.frames, MAX_FRAMES) &&
+    p.frames >= 1 &&
+    Array.isArray(p.frameMs) &&
+    p.frameMs.length <= MAX_FRAMES &&
+    p.frameMs.every((ms) => isCount(ms, 1_000_000)) &&
+    (p.source === 'png' || p.source === 'apng' || p.source === 'gif') &&
+    Array.isArray(p.notes) &&
+    p.notes.length <= 64 &&
+    p.notes.every(isNote) &&
+    isCount(p.bytes, 8 * 1024 * 1024) &&
+    isPngDataUrl(p.preview) &&
+    (p.slim === null || typeof p.slim === 'boolean');
+  return ok ? (value as PickedTexture) : null;
 }

@@ -69,3 +69,8 @@
   font-weight: 700;
   border-radius: var(--radius-md);
 }
+
+/* Waiting on what it started: it keeps the focus and its look; the pointer says so. */
+.button[aria-disabled='true'] {
+  cursor: progress;
+}
