@@ -3,8 +3,10 @@
 //!
 //! A world is a directory `worlds/<worldId>/` with its `world.json` and the
 //! server's working directory. The server is Mojang's own JAR of a version
-//! [`tuple::version`] accepts, run in offline mode on 127.0.0.1; who may enter
-//! is decided by the tunnel, not by the server (ADAPTATION A2, A3).
+//! [`tuple::version`] accepts, or of a version of our own list that
+//! [`tuple::of_entry`] takes, from our update server (D-073); it runs in
+//! offline mode on 127.0.0.1, and who may enter is decided by the tunnel, not
+//! by the server (ADAPTATION A2, A3).
 
 pub mod app;
 pub mod failure;

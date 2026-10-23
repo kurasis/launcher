@@ -36,8 +36,10 @@ with where they came from).
   the update's name and the group.
 - Their version files and game jars come from `upd.lapi.sh/versions/` only
   (`SourcePolicy::ExtraVersions`, never the mirror); libraries, assets and Java from Mojang.
-- Worlds with Friends leaves them out until their own switch comes; a world made before on an
-  April Fools version still gets its server from here.
+- Worlds with Friends offers the 45 with a server from 1.7.6's day on behind «Show special
+  versions» in the new world form (`worlds::tuple::of_entry`), by name; their server jars come
+  from here too. A world made for one has `"special": true` in `world.json`. The worlds service
+  takes the same ids for rooms from `data/extra-world-versions.txt`.
 - The skins mod is not offered on them: it is chosen by exact game version.
 
 ## A new version
@@ -46,11 +48,12 @@ Each April, or when an archive finds a build:
 
 1. Add an April Fools version of Mojang's list to `MANIFEST_JOKES` in
    `scripts/extra-versions.mjs` (newest first, with its update's name).
-2. `node scripts/extra-versions.mjs` (behind a proxy: `NODE_USE_ENV_PROXY=1`) and
+2. `node scripts/extra-versions.mjs` (behind a proxy: `NODE_USE_ENV_PROXY=1`; it writes
+   `data/extra-world-versions.txt` too) and
    `node scripts/extra-versions-files.mjs <folder>` to see that every jar downloads with
    its SHA-1.
 3. Open a pull request: the Versions workflow downloads and scans every jar. On main it
-   publishes.
+   publishes, and the worlds service is deployed again with the new ids.
 
 ## On the server
 

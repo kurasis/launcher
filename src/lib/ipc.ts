@@ -92,6 +92,7 @@ import {
   type WorldsRoom,
   type WorldsRoomPage,
   type WorldsState,
+  type WorldsVersionChoice,
   WORLDS_PROBLEMS,
   type BackupScope,
   type JavaCheck,
@@ -665,9 +666,12 @@ export const ipc = {
   // Worlds with friends (D-068). Failures are LauncherErrors; `worldsProblemOf`
   // reads the service's problem from one.
   worldsState: (): Promise<WorldsState> => invoke<WorldsState>('worlds_state'),
-  /** Versions a world can be made for, newest first; snapshots too when asked. */
-  worldsVersions: (snapshots = false): Promise<string[]> =>
-    invoke<string[]>('worlds_versions', { snapshots }),
+  /**
+   * Versions a world can be made for, newest first; snapshots and the versions
+   * of our own list (D-073) too when asked.
+   */
+  worldsVersions: (snapshots = false, special = false): Promise<WorldsVersionChoice[]> =>
+    invoke<WorldsVersionChoice[]>('worlds_versions', { snapshots, special }),
   worldsLocal: (): Promise<LocalWorld[]> => invoke<LocalWorld[]>('worlds_local'),
   worldsRooms: (): Promise<WorldsRoom[]> => invoke<WorldsRoom[]>('worlds_rooms'),
   worldsRoom: (room: string): Promise<WorldsRoomPage> =>

@@ -102,7 +102,7 @@ function setup(answers: Answers = {}, signedIn = true) {
       case 'worlds_local':
         return [local];
       case 'worlds_versions':
-        return ['1.21.1'];
+        return [{ id: '1.21.1', name: null }];
       case 'worlds_mod_sources':
         return [];
       case 'worlds_room':
@@ -459,7 +459,10 @@ describe('WorldsView', () => {
 
   it('makes a world with the mods of an installation, on its version', async () => {
     const { calls } = setup({
-      worlds_versions: () => ['26.3', '1.21.1'],
+      worlds_versions: () => [
+        { id: '26.3', name: null },
+        { id: '1.21.1', name: null },
+      ],
       worlds_mod_sources: () => [
         {
           instanceId: 'b8f5d6a2-1c3e-4f5a-9b7c-2d4e6f8a0b1c',
@@ -502,7 +505,10 @@ describe('WorldsView', () => {
   it('lists snapshots only when asked, with what they mean', async () => {
     const { calls } = setup({
       worlds_versions: (args) =>
-        args.snapshots === true ? ['26.1-snapshot-2', '1.21.1'] : ['1.21.1'],
+        (args.snapshots === true ? ['26.1-snapshot-2', '1.21.1'] : ['1.21.1']).map((id) => ({
+          id,
+          name: null,
+        })),
       worlds_create: () => mine,
       worlds_accept_eula: () => local,
     });
@@ -528,6 +534,54 @@ describe('WorldsView', () => {
     });
     const payload = called(calls, 'worlds_create')[0]?.args.payload as { minecraft: string };
     expect(payload.minecraft).toBe('26.1-snapshot-2');
+  });
+
+  it('lists the special versions with a server only when asked, by name', async () => {
+    const { calls } = setup({
+      worlds_versions: (args) => [
+        { id: '1.21.1', name: null },
+        ...(args.special === true
+          ? [
+              { id: '24w14potato', name: '24w14potato' },
+              { id: 'combat-8c', name: 'Combat Test 8c' },
+            ]
+          : []),
+      ],
+      worlds_create: () => mine,
+      worlds_accept_eula: () => local,
+    });
+    await screen.findByText('Our base');
+    fireEvent.click(screen.getByRole('button', { name: 'Create a world' }));
+    const dialog = within(screen.getByRole('dialog'));
+    await waitFor(() => {
+      expect(dialog.getByLabelText('Minecraft version')).toHaveValue('1.21.1');
+    });
+    expect(dialog.queryByRole('group', { name: 'Special' })).toBeNull();
+    expect(dialog.queryByText(/not in Mojang's list/)).toBeNull();
+    fireEvent.click(dialog.getByLabelText('Show special versions'));
+    await dialog.findByText(/not in Mojang's list/);
+    const group = within(await dialog.findByRole('group', { name: 'Special' }));
+    expect(group.getAllByRole('option').map((o) => o.textContent)).toEqual([
+      '24w14potato',
+      'Combat Test 8c',
+    ]);
+    expect(called(calls, 'worlds_versions').map((c) => c.args)).toEqual([
+      { snapshots: false, special: false },
+      { snapshots: false, special: true },
+    ]);
+    // The version stays the one chosen.
+    expect(dialog.getByLabelText('Minecraft version')).toHaveValue('1.21.1');
+    fireEvent.change(dialog.getByLabelText('Minecraft version'), {
+      target: { value: 'combat-8c' },
+    });
+    fireEvent.change(dialog.getByLabelText('World name'), { target: { value: 'Combat' } });
+    fireEvent.click(dialog.getByLabelText('I accept the Minecraft EULA'));
+    fireEvent.click(dialog.getByRole('button', { name: 'Create' }));
+    await waitFor(() => {
+      expect(called(calls, 'worlds_create')).toHaveLength(1);
+    });
+    const payload = called(calls, 'worlds_create')[0]?.args.payload as { minecraft: string };
+    expect(payload.minecraft).toBe('combat-8c');
   });
 
   it('manages members and makes invite codes on a room page', async () => {

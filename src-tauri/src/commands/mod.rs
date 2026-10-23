@@ -3929,10 +3929,17 @@ pub fn worlds_state<R: Runtime>(app: AppHandle<R>) -> crate::worlds::app::Worlds
 }
 
 /// The Minecraft versions a world can be made for, newest first; snapshots
-/// too when the player turned them on.
+/// and the versions of our own list (D-073) too when the player turned them
+/// on.
 #[tauri::command]
-pub async fn worlds_versions<R: Runtime>(app: AppHandle<R>, snapshots: bool) -> Vec<String> {
-    worlds(&app).versions(snapshots).await
+pub async fn worlds_versions<R: Runtime>(
+    app: AppHandle<R>,
+    snapshots: bool,
+    special: Option<bool>,
+) -> Vec<crate::worlds::app::VersionChoice> {
+    worlds(&app)
+        .versions(snapshots, special.unwrap_or(false))
+        .await
 }
 
 /// The worlds kept on this computer.

@@ -29,7 +29,6 @@ use super::output::{self, Event};
 use super::properties::RunBinding;
 use super::rcon;
 use super::receipt;
-use super::tuple;
 use super::world::{self, LastRun, Mutation, MutationKind, WorldFile};
 use super::{install, pack};
 use crate::error::{ErrorCode, LauncherError, LauncherResult};
@@ -272,7 +271,7 @@ pub fn start(
 ) -> LauncherResult<HostedServer> {
     let root = launch.root;
     let world: WorldFile = world::load(root, launch.world_id)?;
-    if tuple::version(&world.minecraft).is_none() {
+    if world.version().is_none() {
         return Err(LauncherError::invalid_input(
             "Worlds are not available for this Minecraft version yet.",
         ));

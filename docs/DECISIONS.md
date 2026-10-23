@@ -3152,4 +3152,10 @@ skins-mod <channel>` there only checks the signature against the public key and
   public key, then each version file and jar by SHA-1. Libraries, assets and Java are
   Mojang's, as for every version, with the mirror's fallback (D-062).
 - **Worlds with Friends** needs 1.7.6 or newer (UUID whitelist), so the toggle offers the
-  versions with a server from 15w14a on; 2.0 and older are left out there.
+  versions with a server from 1.7.6's day (2014-04-09) on, 45 of them from 15w14a to
+  26w14a; 2.0 and older are left out there. Their ids have every shape, so the catalog
+  says which they are: the launcher takes one only as an entry of the signed list, and a
+  world made for one records it in `world.json` (`special`). Their servers read the
+  properties in a snapshot's forms. The worlds service takes the same ids for rooms
+  from `data/extra-world-versions.txt`, which `scripts/extra-versions.mjs` writes; a new
+  list redeploys it.

@@ -83,6 +83,9 @@ pub struct WorldFile {
     pub id: WorldId,
     pub name: String,
     pub minecraft: String,
+    /// Made for a version of our own list (D-073), as the catalog said.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub special: bool,
     pub settings: WorldSettings,
     pub created_at: DateTime<Utc>,
     #[serde(default)]
@@ -117,6 +120,10 @@ pub struct WorldFile {
 impl WorldFile {
     /// Whose `pack/` folder holds this world's files: a trial uses its
     /// world's.
+    pub fn version(&self) -> Option<tuple::WorldVersion> {
+        tuple::world_version(&self.minecraft, self.special)
+    }
+
     pub fn pack_owner(&self) -> WorldId {
         self.trial_of.unwrap_or(self.id)
     }
@@ -151,9 +158,21 @@ pub fn create(
     minecraft: &str,
     settings: WorldSettings,
 ) -> LauncherResult<WorldFile> {
+    create_as(root, name, minecraft, false, settings)
+}
+
+/// [`create`]; `special` for a version of our own list that the catalog says a
+/// world can be made for ([`tuple::of_entry`]).
+pub fn create_as(
+    root: &DataRoot,
+    name: &str,
+    minecraft: &str,
+    special: bool,
+    settings: WorldSettings,
+) -> LauncherResult<WorldFile> {
     let name = validate_name(name)?;
     settings.validate()?;
-    if tuple::version(minecraft).is_none() {
+    if tuple::world_version(minecraft, special).is_none() {
         return Err(LauncherError::invalid_input(
             "Worlds are not available for this Minecraft version yet.",
         ));
@@ -168,6 +187,7 @@ pub fn create(
         id: WorldId::generate(),
         name,
         minecraft: minecraft.to_owned(),
+        special,
         settings,
         created_at: Utc::now(),
         server: None,
@@ -332,7 +352,7 @@ pub fn prepare_run(
         ));
     }
     world.settings.validate()?;
-    let version = tuple::version(&world.minecraft).ok_or_else(|| {
+    let version = world.version().ok_or_else(|| {
         LauncherError::invalid_input("Worlds are not available for this Minecraft version yet.")
     })?;
     let dir = root.world_server_dir(world.id);
@@ -413,6 +433,32 @@ mod tests {
         assert_eq!(old.minecraft, "1.7.10");
         let snapshot = create(&root, "x", "24w14a", WorldSettings::default()).unwrap();
         assert_eq!(snapshot.minecraft, "24w14a");
+    }
+
+    #[test]
+    fn a_world_for_a_version_of_our_list_says_so() {
+        let (_dir, root) = root();
+        let settings = WorldSettings::default;
+        // Only when the catalog said it is one (D-073).
+        assert!(create(&root, "x", "24w14potato", settings()).is_err());
+        let potato = create_as(&root, "Potato", "24w14potato", true, settings()).unwrap();
+        assert!(potato.special);
+        assert_eq!(load(&root, potato.id).unwrap(), potato);
+        assert_eq!(potato.version(), Some(tuple::WorldVersion::Snapshot));
+        for version in ["../x", "a/b", "CON", "", " x"] {
+            assert!(create_as(&root, "x", version, true, settings()).is_err());
+        }
+        // A world of Mojang's version does not write it.
+        let plain = create(&root, "Plain", "1.21.1", settings()).unwrap();
+        let text = std::fs::read_to_string(root.world_file(plain.id)).unwrap();
+        assert!(!text.contains("special"));
+        // Its server reads the properties in the oldest forms.
+        let potato = accept_eula(&root, potato.id).unwrap();
+        let nick = Nick::parse("Notch").unwrap();
+        prepare_run(&root, &potato, &binding(), &[nick]).unwrap();
+        let dir = root.world_server_dir(potato.id);
+        let props = std::fs::read_to_string(dir.join("server.properties")).unwrap();
+        assert!(props.lines().any(|l| l == "difficulty=2"), "{props}");
     }
 
     #[test]

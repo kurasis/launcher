@@ -2407,6 +2407,13 @@ export interface WorldsImportable {
   saves: string[];
 }
 
+/** A Minecraft version a world can be made for. */
+export interface WorldsVersionChoice {
+  id: string;
+  /** The name of a version of our own list (D-073): `Combat Test 8c`. */
+  name: string | null;
+}
+
 /** An installation a world with mods can be made from. */
 export interface WorldsModSource {
   instanceId: string;

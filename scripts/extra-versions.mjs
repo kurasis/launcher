@@ -19,14 +19,21 @@
 // no other host for these versions but Mojang's libraries, assets and Java,
 // as for every version. `files` keeps where each jar came from.
 //
+// It also writes data/extra-world-versions.txt: the ids of those a world with
+// friends can be made for, one per line (those with a server, from 1.7.6's day
+// on), which the worlds service takes for rooms.
+//
 // Network: Mojang's version list and files, the archive list. With a proxy:
-// NODE_USE_ENV_PROXY=1. It changes only data/extra-versions.json.
+// NODE_USE_ENV_PROXY=1. It changes only these two files.
 import { createHash } from 'node:crypto';
 import { writeFileSync } from 'node:fs';
 
 const MANIFEST = 'https://piston-meta.mojang.com/mc/game/version_manifest_v2.json';
 const ARCHIVE = 'https://skyrising.github.io/mc-versions/version_manifest.json';
 const OUT = new URL('../data/extra-versions.json', import.meta.url);
+const WORLDS_OUT = new URL('../data/extra-world-versions.txt', import.meta.url);
+// 1.7.6's day, as the launcher's world versions (src-tauri/src/worlds/tuple.rs).
+const WORLDS_FROM = Date.parse('2014-04-09T00:00:00Z');
 /** Where launchers download the game jars (services/upd/src/versions.rs). */
 const FILES = 'https://upd.lapi.sh/versions/files/';
 
@@ -342,6 +349,10 @@ const document = {
   versions: [...jokes, ...rest],
 };
 writeFileSync(OUT, `${JSON.stringify(document, null, 1)}\n`);
+const worlds = document.versions.filter(
+  (v) => v.server && Date.parse(v.releaseTime) >= WORLDS_FROM,
+);
+writeFileSync(WORLDS_OUT, worlds.map((v) => `${v.id}\n`).join(''));
 const counts = {};
 for (const version of document.versions) counts[version.group] = (counts[version.group] ?? 0) + 1;
 console.log(`${document.versions.length} versions`, counts);

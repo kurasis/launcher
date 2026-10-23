@@ -21,6 +21,7 @@ use uuid::Uuid;
 
 use super::world::{self, Mutation, MutationKind, ServerPin, WorldFile};
 use super::{pack, tuple};
+use crate::catalog::manifest::CatalogEntry;
 use crate::catalog::source::{Fetch, MetadataService};
 use crate::download::{
     CancelToken, Digest, DownloadRequest, Executor, ProgressSink, resolve_managed_path,
@@ -49,15 +50,15 @@ pub struct ServerPlan {
     pub runtime: RuntimeRequirement,
 }
 
-/// Plans the server of a world version from its verified descriptor bytes,
-/// with the Java the descriptor names.
-pub fn plan(bytes: &[u8], minecraft: &str, ctx: &RuleContext) -> LauncherResult<ServerPlan> {
-    if tuple::version(minecraft).is_none() {
+/// Plans the server of a world version from its catalog entry and verified
+/// descriptor bytes, with the Java the descriptor names.
+pub fn plan(bytes: &[u8], entry: &CatalogEntry, ctx: &RuleContext) -> LauncherResult<ServerPlan> {
+    if tuple::of_entry(entry).is_none() {
         return Err(LauncherError::invalid_input(
             "Worlds are not available for this Minecraft version yet.",
         ));
     }
-    let parsed = descriptor::parse(bytes, minecraft)?;
+    let parsed = descriptor::parse(bytes, &entry.id)?;
     let jar = parsed
         .server
         .ok_or_else(|| descriptor::unsupported("downloads.server"))?;
@@ -141,7 +142,7 @@ pub async fn prepare<F: Fetch>(
         .filter(|e| matches!(e.version_type.as_str(), "release" | "snapshot"))
         .ok_or_else(|| descriptor::unsupported("version not listed"))?;
     let bytes = metadata.descriptor(entry).await?;
-    let plan = plan(&bytes, &world.minecraft, &RuleContext::current()?)?;
+    let plan = plan(&bytes, entry, &RuleContext::current()?)?;
 
     let pinned = world
         .server
@@ -523,9 +524,23 @@ mod tests {
         RuleContext::with_default_features(MetaOs::Linux, "x86_64", None)
     }
 
+    fn mojang(id: &str) -> CatalogEntry {
+        CatalogEntry {
+            id: id.to_owned(),
+            version_type: "release".to_owned(),
+            url: format!(
+                "https://piston-meta.mojang.com/v1/packages/{0}/{id}.json",
+                "a".repeat(40)
+            ),
+            sha1: Sha1::parse(&"a".repeat(40)).unwrap(),
+            release_time: None,
+            special: None,
+        }
+    }
+
     #[test]
     fn plans_the_official_server_of_1_21_1() {
-        let plan = plan(V1_21_1, "1.21.1", &ctx()).unwrap();
+        let plan = plan(V1_21_1, &mojang("1.21.1"), &ctx()).unwrap();
         assert_eq!(
             plan.jar.sha1.as_str(),
             "59353fb40c36d304f2035d51e7d6e6baa98dc05c"
@@ -559,24 +574,44 @@ mod tests {
             .find(|v| v["id"] == "24w14potato")
             .unwrap();
         let bytes = potato["descriptor"].as_str().unwrap().as_bytes();
-        // Its own id is not a world version yet; the toggle comes with Worlds.
-        let mut descriptor: serde_json::Value = serde_json::from_slice(bytes).unwrap();
-        descriptor["id"] = "1.21.1".into();
-        let plan = plan(&serde_json::to_vec(&descriptor).unwrap(), "1.21.1", &ctx()).unwrap();
+        let sha1 = potato["sha1"].as_str().unwrap();
+        let mut entry = CatalogEntry {
+            id: "24w14potato".to_owned(),
+            version_type: "snapshot".to_owned(),
+            url: format!("https://upd.lapi.sh/versions/meta/{sha1}.json"),
+            sha1: Sha1::parse(sha1).unwrap(),
+            release_time: potato["releaseTime"].as_str().map(str::to_owned),
+            special: Some(crate::catalog::extra::Special {
+                name: "24w14potato".to_owned(),
+                title: None,
+                group: "joke".to_owned(),
+                variant: None,
+                server: true,
+            }),
+        };
+        let plan = plan(bytes, &entry, &ctx()).unwrap();
         let request = request(&plan).unwrap();
         assert_eq!(request.source, SourcePolicy::ExtraVersions);
         assert_eq!(request.url.host_str(), Some("upd.lapi.sh"));
         assert!(!request.source.mirrored());
+        // Not without its place in our list.
+        entry.special = None;
+        assert!(super::plan(bytes, &entry, &ctx()).is_err());
     }
 
     #[test]
     fn the_java_comes_from_the_descriptor() {
-        let plan = plan(V26_3, "26.3", &ctx()).unwrap();
+        let plan = plan(V26_3, &mojang("26.3"), &ctx()).unwrap();
         assert_eq!((plan.java_major, plan.runtime.major), (25, 25));
         let mut old: serde_json::Value = serde_json::from_slice(V1_21_1).unwrap();
         old["id"] = "1.12.2".into();
         old["javaVersion"] = serde_json::json!({"component": "jre-legacy", "majorVersion": 8});
-        let plan = super::plan(&serde_json::to_vec(&old).unwrap(), "1.12.2", &ctx()).unwrap();
+        let plan = super::plan(
+            &serde_json::to_vec(&old).unwrap(),
+            &mojang("1.12.2"),
+            &ctx(),
+        )
+        .unwrap();
         assert_eq!(plan.java_major, 8);
         assert_eq!(plan.runtime.component.as_deref(), Some("jre-legacy"));
     }
@@ -584,7 +619,7 @@ mod tests {
     #[test]
     fn only_world_versions_are_planned() {
         for id in ["1.7.2", "1.6.4", "14w02a", "1.21-pre0"] {
-            assert!(plan(V1_21_1, id, &ctx()).is_err(), "{id}");
+            assert!(plan(V1_21_1, &mojang(id), &ctx()).is_err(), "{id}");
         }
     }
 
@@ -601,17 +636,17 @@ mod tests {
             "sha1": "59353fb40c36d304f2035d51e7d6e6baa98dc05c",
             "size": 10
         }));
-        let plan = plan(&foreign, "1.21.1", &ctx()).unwrap();
+        let plan = plan(&foreign, &mojang("1.21.1"), &ctx()).unwrap();
         assert!(request(&plan).is_err(), "host not on the allowlist");
         let missing_size = with_server(serde_json::json!({
             "url": "https://piston-data.mojang.com/server.jar",
             "sha1": "59353fb40c36d304f2035d51e7d6e6baa98dc05c"
         }));
-        assert!(super::plan(&missing_size, "1.21.1", &ctx()).is_err());
+        assert!(super::plan(&missing_size, &mojang("1.21.1"), &ctx()).is_err());
         let mut value: serde_json::Value = serde_json::from_slice(V1_21_1).unwrap();
         value["downloads"].as_object_mut().unwrap().remove("server");
         let none = serde_json::to_vec(&value).unwrap();
-        assert!(super::plan(&none, "1.21.1", &ctx()).is_err());
+        assert!(super::plan(&none, &mojang("1.21.1"), &ctx()).is_err());
     }
 
     #[test]
@@ -628,7 +663,9 @@ mod tests {
                 size: body.len() as u64,
             },
             mappings: None,
-            runtime: super::plan(V1_21_1, "1.21.1", &ctx()).unwrap().runtime,
+            runtime: super::plan(V1_21_1, &mojang("1.21.1"), &ctx())
+                .unwrap()
+                .runtime,
         };
         assert!(pin(&root, &plan).is_err(), "missing");
         let path = root.server_jar(&sha1);

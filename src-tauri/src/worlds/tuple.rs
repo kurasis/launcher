@@ -9,6 +9,14 @@
 //! ready, the Login Start layout from the client's handshake
 //! (`tunnel::handshake`), and the few properties that changed between releases
 //! from [`WorldVersion`].
+//!
+//! The versions of our own list (D-073) have ids of every shape, so the catalog
+//! says which they are: those with a server from 1.7.6's day on are world
+//! versions too, behind a switch of their own ([`of_entry`]), and a world made
+//! for one says so in `world.json` ([`world_version`]).
+
+use crate::catalog::manifest::CatalogEntry;
+use crate::storage::paths::SafeName;
 
 /// A release number: `1.7.10`, `1.21` or `26.1`; ordered by its numbers.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -147,6 +155,37 @@ pub fn version(minecraft: &str) -> Option<WorldVersion> {
     }
 }
 
+/// 1.7.6's day: a version of our own list released before it is not a world
+/// version (`2.0`, 1.5's early releases, Beta).
+const OLDEST_LISTED: (i32, u32, u32) = (2014, 4, 9);
+
+/// The world version of a catalog entry: Mojang's by its id, and a version of
+/// our own list (D-073) when it has a server and came from 1.7.6's day on. Its
+/// properties are written as a snapshot's, since its id does not say which
+/// forms it reads.
+pub fn of_entry(entry: &CatalogEntry) -> Option<WorldVersion> {
+    let Some(special) = &entry.special else {
+        return version(&entry.id);
+    };
+    let (year, month, day) = OLDEST_LISTED;
+    let oldest = chrono::NaiveDate::from_ymd_opt(year, month, day)?.and_hms_opt(0, 0, 0)?;
+    let released = entry
+        .release_time
+        .as_deref()
+        .and_then(|t| chrono::DateTime::parse_from_rfc3339(t).ok())
+        .is_some_and(|t| t.naive_utc() >= oldest);
+    (special.server && released && SafeName::parse(&entry.id).is_ok())
+        .then(|| version(&entry.id).unwrap_or(WorldVersion::Snapshot))
+}
+
+/// The world version of a world made for `minecraft`; `special` when it was
+/// made for a version of our own list that [`of_entry`] took.
+pub fn world_version(minecraft: &str, special: bool) -> Option<WorldVersion> {
+    version(minecraft).or_else(|| {
+        (special && SafeName::parse(minecraft).is_ok()).then_some(WorldVersion::Snapshot)
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -271,6 +310,101 @@ mod tests {
             "24w14a/../x",
         ] {
             assert_eq!(version(id), None, "{id:?}");
+        }
+    }
+
+    fn listed(id: &str, release_time: &str, server: bool) -> CatalogEntry {
+        CatalogEntry {
+            id: id.to_owned(),
+            version_type: "snapshot".to_owned(),
+            url: format!("https://upd.lapi.sh/versions/meta/{}.json", "a".repeat(40)),
+            sha1: crate::storage::paths::Sha1::parse(&"a".repeat(40)).unwrap(),
+            release_time: Some(release_time.to_owned()),
+            special: Some(crate::catalog::extra::Special {
+                name: id.to_owned(),
+                title: None,
+                group: "joke".to_owned(),
+                variant: None,
+                server,
+            }),
+        }
+    }
+
+    #[test]
+    fn versions_of_our_list_with_a_server_from_1_7_6_on_are_world_versions() {
+        // The worlds service takes the same ids for rooms.
+        let data: serde_json::Value =
+            serde_json::from_slice(include_bytes!("../../../data/extra-versions.json")).unwrap();
+        let taken: Vec<_> = data["versions"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|v| {
+                let entry = listed(
+                    v["id"].as_str().unwrap(),
+                    v["releaseTime"].as_str().unwrap(),
+                    v["server"].as_bool().unwrap(),
+                );
+                of_entry(&entry) == Some(WorldVersion::Snapshot)
+            })
+            .map(|v| v["id"].as_str().unwrap())
+            .collect();
+        let service: Vec<_> = include_str!("../../../data/extra-world-versions.txt")
+            .lines()
+            .collect();
+        assert_eq!(taken, service);
+        for id in ["24w14potato", "3D Shareware v1.34", "combat-8c", "15w14a"] {
+            assert!(taken.contains(&id), "{id}");
+        }
+        for id in ["2.0-blue", "13w11a", "b1.7_01", "1.0.0-rc2-3"] {
+            assert!(!taken.contains(&id), "{id}");
+        }
+    }
+
+    #[test]
+    fn a_version_of_our_list_needs_a_server_a_time_and_a_safe_id() {
+        let at = "2020-04-01T12:00:00+00:00";
+        assert_eq!(
+            of_entry(&listed("20w14infinite", at, true)),
+            Some(WorldVersion::Snapshot)
+        );
+        assert_eq!(of_entry(&listed("20w14infinite", at, false)), None);
+        for time in [
+            "2014-04-08T23:59:59+00:00",
+            "2014-04-09T01:00:00+02:00",
+            "yesterday",
+            "",
+        ] {
+            assert_eq!(of_entry(&listed("x", time, true)), None, "{time}");
+        }
+        assert!(of_entry(&listed("x", "2014-04-09T00:00:00+00:00", true)).is_some());
+        let mut timeless = listed("x", at, true);
+        timeless.release_time = None;
+        assert_eq!(of_entry(&timeless), None);
+        for id in ["../x", "a/b", "CON", " x", "x.", ""] {
+            assert_eq!(of_entry(&listed(id, at, true)), None, "{id:?}");
+        }
+        // Mojang's by their ids, as before.
+        let mut mojang = listed("1.21.1", at, true);
+        mojang.special = None;
+        assert!(matches!(of_entry(&mojang), Some(WorldVersion::Release(_))));
+        mojang.id = "20w14infinite".to_owned();
+        assert_eq!(of_entry(&mojang), None);
+    }
+
+    #[test]
+    fn a_world_says_when_it_is_for_a_version_of_our_list() {
+        assert_eq!(world_version("24w14potato", false), None);
+        assert_eq!(
+            world_version("24w14potato", true),
+            Some(WorldVersion::Snapshot)
+        );
+        assert!(matches!(
+            world_version("1.21.1", true),
+            Some(WorldVersion::Release(_))
+        ));
+        for id in ["../x", "a\\b", "NUL", "", "x\n"] {
+            assert_eq!(world_version(id, true), None, "{id:?}");
         }
     }
 }
