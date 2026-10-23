@@ -2965,13 +2965,16 @@ skins-mod <channel>` there only checks the signature against the public key and
   default: the core looks every 3 minutes, tells each start once, and only while the
   launcher is not in front.
 - **Pictures for the mosaic (D-072, 2026-10-22):** a Short also has an upright preview
-  `ys/<id>.jpg` (`imageTall`, 360×640: YouTube's own upright picture, else the middle of
-  its 16:9 preview); videos and streams have the channel's picture `ya/<channel id>.jpg`
+  `ys/<id>.jpg` (`imageTall`, up to 540×960: YouTube's own upright picture, else the
+  middle of its 16:9 preview); videos and streams have the channel's picture `ya/<channel id>.jpg`
   or `ta/<login>.jpg` (`avatar`, 96 px square). The service looks a channel's picture up
   only when a launcher asks for it, and only for channels it knows (ours, those players
   named, streams it lists): from the channel page on YouTube, from Helix on Twitch, at
   most once in 10 minutes each, kept a week. Note cards carry their picture's
-  `imageWidth` and `imageHeight`.
+  `imageWidth` and `imageHeight`. Since 2026-10-23 video previews are made from the
+  largest picture YouTube has (1280×720, else 640×480 or 480×360 without the black bars,
+  320×180 last) at 960×540, stream previews at 960×540, JPEG quality 85 with Lanczos
+  scaling; previews stored narrower than 400 px are made again once a day.
 - **Video lengths (owner request, 2026-10-22):** RSS has none, so the service asks
   YouTube's Data API v3 with a key (secret `YOUTUBE_API_KEY`) for videos that have
   none yet: 1 unit per 50 videos, kept with the video, so a day takes a few hundred of

@@ -7,7 +7,7 @@
 //! - `img/<sha256>.jpg`: article pictures, named by their content, kept
 //!   while the feed refers to them;
 //! - `yt/<video id>.jpg`: a YouTube video's preview (16:9), fetched the first
-//!   time a launcher asks for it;
+//!   time a launcher asks for it, from the largest picture YouTube has;
 //! - `ys/<video id>.jpg`: the same for a Short, upright (9:16);
 //! - `tw/<login>.jpg`: a live stream's preview, fetched again after
 //!   `STREAM_TTL`;
@@ -32,7 +32,7 @@ const MAX_FILE: usize = 8 * 1024 * 1024;
 const MAX_SIDE: u32 = 8192;
 /// Memory one decode may take.
 const MAX_ALLOC: u64 = 160 * 1024 * 1024;
-const QUALITY: u8 = 82;
+const QUALITY: u8 = 85;
 /// A stream preview is fetched again after this.
 pub const STREAM_TTL: Duration = Duration::from_secs(10 * 60);
 /// A channel's picture is fetched again after this.
@@ -43,17 +43,32 @@ const KEEP_VIDEO: Duration = Duration::from_secs(30 * 24 * 3600);
 const KEEP_STREAM: Duration = Duration::from_secs(24 * 3600);
 const KEEP_AVATAR: Duration = Duration::from_secs(30 * 24 * 3600);
 
-/// Picture widths: article pictures, previews, upright Short previews
-/// (360×640) and channel pictures.
+/// Picture widths: article pictures, previews (960×540), upright Short
+/// previews (540×960) and channel pictures.
 pub const WIDE: u32 = 1280;
-pub const PREVIEW: u32 = 480;
-pub const TALL: u32 = 360;
+pub const PREVIEW: u32 = 960;
+pub const TALL: u32 = 540;
 pub const AVATAR: u32 = 96;
+
+/// Where a video's 16:9 preview is looked for, best first: 1280×720, then
+/// the 4:3 ones (640×480, 480×360) without their black bars, then 320×180.
+const PREVIEW_SOURCES: [&str; 4] = [
+    "hq720.jpg",
+    "sddefault.jpg",
+    "hqdefault.jpg",
+    "mqdefault.jpg",
+];
 
 /// Where a Short's upright preview is looked for, best first: YouTube's own
 /// upright picture (1080×1920), then the middle of its 16:9 previews, which
 /// show the Short between blurred sides.
 const TALL_SOURCES: [&str; 3] = ["oar2.jpg", "hq720.jpg", "hqdefault.jpg"];
+
+/// A stored video preview narrower than this (made from YouTube's smallest
+/// pictures, as all were before 2026-10-23) is made again when it is older
+/// than `REDO_AFTER`, until a larger one is found.
+const REDO_NARROWER: u32 = 400;
+const REDO_AFTER: Duration = Duration::from_secs(24 * 3600);
 
 pub fn sha_name(name: &str) -> bool {
     name.len() == 68
@@ -112,7 +127,7 @@ pub fn reencode(bytes: &[u8], width: u32, ratio: Option<(u32, u32)>) -> Result<V
     let picture = if picture.width() > width {
         let height = (u64::from(picture.height()) * u64::from(width) / u64::from(picture.width()))
             .max(1) as u32;
-        picture.resize_exact(width, height, image::imageops::FilterType::Triangle)
+        picture.resize_exact(width, height, image::imageops::FilterType::Lanczos3)
     } else {
         picture
     };
@@ -167,6 +182,20 @@ fn write_atomic(path: &Path, bytes: &[u8]) -> Result<(), String> {
 fn age(path: &Path) -> Option<Duration> {
     let modified = std::fs::metadata(path).ok()?.modified().ok()?;
     SystemTime::now().duration_since(modified).ok()
+}
+
+/// Whether a stored video preview is a narrow one due to be made again.
+pub fn redo(path: &Path) -> bool {
+    age(path).is_some_and(|a| a > REDO_AFTER)
+        && size_of(path).is_some_and(|(width, _)| width < REDO_NARROWER)
+}
+
+/// Marks a file as just made, so a preview that could not be made again is
+/// tried only after `REDO_AFTER` once more.
+fn touch(path: &Path) {
+    if let Ok(file) = std::fs::File::options().write(true).open(path) {
+        file.set_modified(SystemTime::now()).ok();
+    }
 }
 
 impl Images {
@@ -225,32 +254,29 @@ impl Images {
                 let path = self.dir.join("img").join(name);
                 path.exists().then_some(path)
             }
-            "yt" => {
+            "yt" | "ys" => {
                 let id = name.strip_suffix(".jpg").filter(|id| video_id(id))?;
-                let path = self.dir.join("yt").join(name);
-                if path.exists() {
+                let path = self.dir.join(kind).join(name);
+                let stored = path.exists();
+                if stored && !redo(&path) {
                     return Some(path);
                 }
-                // The 16:9 preview, without the black bars of `hqdefault`.
-                let url = format!("https://i.ytimg.com/vi/{id}/mqdefault.jpg");
-                let jpeg = self.fetch(&url, PREVIEW, None).await.ok()?;
-                write_atomic(&path, &jpeg).ok()?;
-                Some(path)
-            }
-            "ys" => {
-                let id = name.strip_suffix(".jpg").filter(|id| video_id(id))?;
-                let path = self.dir.join("ys").join(name);
-                if path.exists() {
-                    return Some(path);
-                }
-                for source in TALL_SOURCES {
+                let (sources, width, ratio) = if kind == "yt" {
+                    (&PREVIEW_SOURCES[..], PREVIEW, (16, 9))
+                } else {
+                    (&TALL_SOURCES[..], TALL, (9, 16))
+                };
+                for source in sources {
                     let url = format!("https://i.ytimg.com/vi/{id}/{source}");
-                    if let Ok(jpeg) = self.fetch(&url, TALL, Some((9, 16))).await {
+                    if let Ok(jpeg) = self.fetch(&url, width, Some(ratio)).await {
                         write_atomic(&path, &jpeg).ok()?;
                         return Some(path);
                     }
                 }
-                None
+                if stored {
+                    touch(&path);
+                }
+                stored.then_some(path)
             }
             "tw" => {
                 let login = name.strip_suffix(".jpg").filter(|l| twitch_login(l))?;

@@ -26,7 +26,7 @@ pub struct Stream {
     pub title: String,
     pub viewers: u64,
     pub started: String,
-    /// Where its preview is fetched (440×248), not given to players.
+    /// Where its preview is fetched (960×540), not given to players.
     #[serde(skip_serializing, default)]
     pub preview: String,
 }
@@ -137,8 +137,8 @@ pub fn pick(data: Vec<RawStream>, blocked: Blocked<'_>, game: Option<&str>) -> V
             }
             let preview = s
                 .thumbnail_url
-                .replace("{width}", "440")
-                .replace("{height}", "248");
+                .replace("{width}", "960")
+                .replace("{height}", "540");
             let url = url::Url::parse(&preview).ok()?;
             if url.scheme() != "https"
                 || !url.host_str().is_some_and(|h| h == "static-cdn.jtvnw.net")
