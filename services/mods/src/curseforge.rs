@@ -420,10 +420,10 @@ pub const MAX_PAGE: usize = 8 * 1024 * 1024;
 /// Reads a project's page: the project object in the App Router stream
 /// (the one with this slug and a numeric ID), then JSON-LD and Open Graph
 /// tags for what it lacks.
-pub fn page(html: &str, slug: &str) -> Card {
+pub fn page(html: &str, class: &str, slug: &str) -> Card {
     let html = &html[..floor(html, MAX_PAGE)];
     let stream = stream(html);
-    let mut card = project_in(&stream, slug)
+    let mut card = project_in(&stream, class, slug)
         .map(|p| card_of(&stream, &p))
         .unwrap_or_default();
     let ld = ld_json(html);
@@ -759,56 +759,141 @@ fn stream(html: &str) -> String {
     out
 }
 
-/// The project object in the stream: an object with this slug, a numeric
-/// `id`, and Minecraft's game (or a class) beside them.
-fn project_in(text: &str, slug: &str) -> Option<Value> {
+/// The project object in the stream: of the objects with this slug and a
+/// numeric `id`, the one most like the project of a page of this class
+/// ([`likeness`]), the first of equals. A page also lists other things that
+/// share the slug, such as the servers that run a modpack.
+fn project_in(text: &str, class: &str, slug: &str) -> Option<Value> {
+    let mut best: Option<(u32, Value)> = None;
+    for (score, value) in objects_with(text, class, slug) {
+        if best.as_ref().is_none_or(|(s, _)| score > *s) {
+            best = Some((score, value));
+        }
+    }
+    best.map(|(_, value)| value)
+}
+
+/// What [`likeness`] gives the project when all it looks at is there.
+const MOST_LIKE: u32 = 15;
+
+/// The objects with this slug and a numeric `id` that could be the project,
+/// with their [`likeness`], each number once. At most 32, from at most 512
+/// objects read.
+fn objects_with(text: &str, class: &str, slug: &str) -> Vec<(u32, Value)> {
     let needle = format!("\"slug\":\"{slug}\"");
+    let mut found = Vec::new();
     let mut tries = 0;
     let mut from = 0;
-    while let Some(found) = text[from..].find(&needle) {
-        let at = from + found;
+    'slug: while let Some(at) = text[from..].find(&needle) {
+        let at = from + at;
         from = at + needle.len();
         // Objects that start before it, nearest first.
         let start = floor(text, at.saturating_sub(64 * 1024));
         for (open, _) in text[start..at].rmatch_indices('{').take(64) {
             tries += 1;
             if tries > 512 {
-                return None;
+                break 'slug;
             }
             let mut values =
                 serde_json::Deserializer::from_str(&text[start + open..]).into_iter::<Value>();
-            if let Some(Ok(value)) = values.next()
-                && let Some(project) = find_project(&value, slug, 0)
-            {
-                return Some(project.clone());
+            if let Some(Ok(value)) = values.next() {
+                let before = found.len();
+                collect_projects(&value, class, slug, 0, &mut found);
+                if found.len() > before {
+                    // The slug's other places inside it were looked at.
+                    from = from.max(start + open + values.byte_offset());
+                    if found.len() >= 32 || found.iter().any(|(s, _)| *s >= MOST_LIKE) {
+                        break 'slug;
+                    }
+                    continue 'slug;
+                }
             }
         }
     }
-    None
+    found
 }
 
-fn find_project<'a>(value: &'a Value, slug: &str, depth: usize) -> Option<&'a Value> {
-    if depth > 32 {
-        return None;
+fn collect_projects(
+    value: &Value,
+    class: &str,
+    slug: &str,
+    depth: usize,
+    found: &mut Vec<(u32, Value)>,
+) {
+    if depth > 32 || found.len() >= 32 {
+        return;
     }
     match value {
         Value::Object(map) => {
-            let is_it = map.get("slug").and_then(Value::as_str) == Some(slug)
-                && map.get("id").and_then(Value::as_u64).is_some_and(|n| n > 0)
-                && (map.get("gameId").and_then(Value::as_u64) == Some(GAME)
-                    || map.contains_key("classId")
-                    || map.contains_key("class"));
-            if is_it {
-                return Some(value);
+            if map.get("slug").and_then(Value::as_str) == Some(slug)
+                && let Some(id) = map.get("id").and_then(Value::as_u64).filter(|n| *n > 0)
+                && let Some(score) = likeness(map, class)
+            {
+                // A number shown twice is kept by its fuller object.
+                match found
+                    .iter_mut()
+                    .find(|(_, v)| v.get("id").and_then(Value::as_u64) == Some(id))
+                {
+                    Some(kept) if kept.0 < score => *kept = (score, value.clone()),
+                    Some(_) => {}
+                    None => found.push((score, value.clone())),
+                }
             }
-            map.values().find_map(|v| find_project(v, slug, depth + 1))
+            for v in map.values() {
+                collect_projects(v, class, slug, depth + 1, found);
+            }
         }
-        Value::Array(items) => items
-            .iter()
-            .take(10_000)
-            .find_map(|v| find_project(v, slug, depth + 1)),
-        _ => None,
+        Value::Array(items) => {
+            for v in items.iter().take(10_000) {
+                collect_projects(v, class, slug, depth + 1, found);
+            }
+        }
+        _ => {}
     }
+}
+
+/// How much an object with the project's slug is like the project of a page
+/// of this class: 8 for the class (`classId`, or `class` by its word), 2 for
+/// Minecraft's game, and 1 for each of the fields a card has. Another
+/// class's or another game's object is not it (`None`), nor one that names
+/// neither a class nor a game.
+fn likeness(map: &serde_json::Map<String, Value>, class: &str) -> Option<u32> {
+    let class_id = CLASS_IDS.iter().find(|(_, c)| *c == class).map(|(n, _)| *n);
+    let mut score = 0;
+    match map.get("classId").and_then(Value::as_u64) {
+        Some(n) if class_id == Some(n) => score = 8,
+        Some(_) if class_id.is_some() => return None,
+        _ => {}
+    }
+    if let Some(named) = map.get("class")
+        && (named.as_str() == Some(class)
+            || named.get("slug").and_then(Value::as_str) == Some(class))
+    {
+        score = 8;
+    }
+    match map.get("gameId").and_then(Value::as_u64) {
+        Some(GAME) => score += 2,
+        Some(_) => return None,
+        None => {}
+    }
+    if !["classId", "class", "gameId"]
+        .iter()
+        .any(|k| map.contains_key(*k))
+    {
+        return None;
+    }
+    let fields = ["name", "summary", "logo", "authors", "downloadCount"];
+    Some(score + fields.iter().filter(|k| map.contains_key(**k)).count() as u32)
+}
+
+/// The numbers of the objects that could be a page's project, with their
+/// likeness, for the probe (numbers only).
+pub fn choices(html: &str, class: &str, slug: &str) -> Vec<(u64, u32)> {
+    let html = &html[..floor(html, MAX_PAGE)];
+    objects_with(&stream(html), class, slug)
+        .into_iter()
+        .filter_map(|(score, v)| Some((v.get("id")?.as_u64()?, score)))
+        .collect()
 }
 
 /// A value of the stream: a reference (`"$1f"`) is replaced by the chunk it
@@ -1080,10 +1165,10 @@ const UPDATED: &[&str] = &[
 
 /// The shapes of the project object's fields the card could use, for the
 /// probe: `<key>:<shape>` for each one present (our words only).
-pub fn shapes(html: &str, slug: &str) -> Vec<String> {
+pub fn shapes(html: &str, class: &str, slug: &str) -> Vec<String> {
     let html = &html[..floor(html, MAX_PAGE)];
     let stream = stream(html);
-    let Some(project) = project_in(&stream, slug) else {
+    let Some(project) = project_in(&stream, class, slug) else {
         return Vec::new();
     };
     let keys = [

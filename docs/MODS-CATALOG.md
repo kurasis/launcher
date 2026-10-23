@@ -234,7 +234,8 @@ versions, kept files and GB, requests, jobs waiting and failed). On the server:
 
 `task=probe` shows how CurseForge answers the server, directly and through each proxy
 (numbered, never named): a status, `challenge` when Cloudflare asked for a browser check,
-the size, and for pages whether they carry their data. On the server:
+the size, and for pages whether they carry their data; for RLCraft's page, the number
+the reader chooses and each candidate's number and likeness. On the server:
 
 ```sh
 sudo -u lapi-mods /home/www/lapi/mods/current/lapi-mods counts

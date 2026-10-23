@@ -13,6 +13,8 @@ use crate::fetch::{Client, FetchError, Reply};
 /// Just Enough Items: a large, long-lived public project.
 const PROJECT: u64 = 238_222;
 const SLUG: &str = "jei";
+/// RLCraft: a modpack whose page also lists other things with its slug.
+const MODPACK: &str = "rlcraft";
 const MAX_BYTES: u64 = 4 * 1024 * 1024;
 /// The search as the site's own page asks it.
 const SEARCH_FULL: &str = "https://www.curseforge.com/api/v1/mods/search?gameId=432&index=0&classId=6&filterText=jei&pageSize=20&sortField=1";
@@ -128,6 +130,12 @@ fn checks(file: Option<u64>) -> Vec<Check> {
         Check {
             name: "cf_project_page",
             url: format!("https://www.curseforge.com/minecraft/mc-mods/{SLUG}"),
+            look: Look::PageData,
+            headers: &[],
+        },
+        Check {
+            name: "cf_modpack_page",
+            url: format!("https://www.curseforge.com/minecraft/modpacks/{MODPACK}"),
             look: Look::PageData,
             headers: &[],
         },
@@ -295,7 +303,7 @@ fn media_report(page: &[u8]) -> String {
 /// What the CurseForge adapter reads from the project's page: our words and
 /// numbers (whether the ID is the project's, which fields came, how many).
 fn card_report(page: &[u8]) -> String {
-    let card = crate::curseforge::page(&String::from_utf8_lossy(page), SLUG);
+    let card = crate::curseforge::page(&String::from_utf8_lossy(page), "mc-mods", SLUG);
     let mut words = vec![match card.id {
         Some(PROJECT) => "id_ok".to_owned(),
         Some(_) => "id_other".to_owned(),
@@ -317,11 +325,27 @@ fn card_report(page: &[u8]) -> String {
     words.push(format!("authors:{}", card.authors.len()));
     words.push(format!("gallery:{}", card.gallery.len()));
     words.push(format!("categories:{}", card.categories.len()));
-    let shapes = crate::curseforge::shapes(&String::from_utf8_lossy(page), SLUG);
+    let shapes = crate::curseforge::shapes(&String::from_utf8_lossy(page), "mc-mods", SLUG);
     if !shapes.is_empty() {
         words.push(format!("fields[{}]", shapes.join(" ")));
     }
     words.join(",")
+}
+
+/// The objects on the modpack's page that could be its project: each one's
+/// number and likeness, the chosen one first. Numbers only.
+fn choices_report(page: &[u8]) -> String {
+    let page = String::from_utf8_lossy(page);
+    let chosen = crate::curseforge::page(&page, "modpacks", MODPACK).id;
+    let all: Vec<String> = crate::curseforge::choices(&page, "modpacks", MODPACK)
+        .into_iter()
+        .map(|(id, score)| format!("{id}:{score}"))
+        .collect();
+    format!(
+        "chosen:{} ids[{}]",
+        chosen.map_or_else(|| "none".to_owned(), |id| id.to_string()),
+        all.join(",")
+    )
 }
 
 /// What the adapter finds on the search page: how many hits, whether JEI
@@ -402,6 +426,9 @@ pub async fn run(client: &Client, tmp: &Path) -> Vec<String> {
                             ),
                             "cf_search_page" => {
                                 format!("{} {}", page_data(&page), search_report(&page))
+                            }
+                            "cf_modpack_page" => {
+                                format!("{} {}", page_data(&page), choices_report(&page))
                             }
                             _ => page_data(&page),
                         })

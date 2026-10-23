@@ -1633,6 +1633,18 @@ fn cf_page(project: &Value) -> String {
     )
 }
 
+/// The site's address for a project's number, which leads to its page.
+fn cf_number(sites: &Sites, project: u64, class: &str, slug: &str) {
+    sites.put(
+        &curseforge::number_url(project),
+        Page {
+            status: 308,
+            location: Some(curseforge::page_url(class, slug)),
+            ..Page::default()
+        },
+    );
+}
+
 /// JEI with three files for one game version and loader, one early-access
 /// and one not released; the newest release needs Architectury, whose page
 /// is missing.
@@ -1691,6 +1703,7 @@ fn curseforge_site(sites: &Sites) -> HashMap<u64, Vec<u8>> {
         &curseforge::page_url("mc-mods", "jei"),
         ok(cf_page(&project)),
     );
+    cf_number(sites, JEI, "mc-mods", "jei");
     sites.put(
         "https://media.forgecdn.net/avatars/1/1/jei.png",
         ok(png(200, 200)),
@@ -1957,12 +1970,12 @@ fn curseforge_pages_are_read_with_care() {
         "id": JEI, "slug": "jei", "gameId": 432, "name": "Just Enough Items",
         "description": "<p>About</p>",
     });
-    let card = curseforge::page(&cf_page(&project), "jei");
+    let card = curseforge::page(&cf_page(&project), "mc-mods", "jei");
     assert_eq!(card.id, Some(JEI));
     assert_eq!(card.title, "Just Enough Items");
     assert_eq!(card.body, "<p>About</p>");
     // Another slug's page has no ID; the tags still give a title.
-    let other = curseforge::page(&cf_page(&project), "jeii");
+    let other = curseforge::page(&cf_page(&project), "mc-mods", "jeii");
     assert_eq!(other.id, None);
     assert_eq!(other.title, "JEI & more");
 
@@ -1981,14 +1994,14 @@ fn curseforge_pages_are_read_with_care() {
         html_body.len()
     );
     let html = format!("<script>self.__next_f.push({})</script>", json!([1, rsc]));
-    let card = curseforge::page(&html, "jei");
+    let card = curseforge::page(&html, "mc-mods", "jei");
     assert_eq!(card.body, html_body);
     assert_eq!(card.gallery.len(), 1);
     assert_eq!(card.gallery[0].title, "Shot");
     assert_eq!(card.published, 1_448_064_000);
     assert_eq!(card.updated, 1_709_251_200);
     assert_eq!(
-        curseforge::shapes(&html, "jei"),
+        curseforge::shapes(&html, "mc-mods", "jei"),
         [
             format!("description:ref_str{}", html_body.len()),
             "screenshots:ref_list1".to_owned(),
@@ -2000,7 +2013,7 @@ fn curseforge_pages_are_read_with_care() {
     let broken = json!({ "id": JEI, "slug": "jei", "gameId": 432, "description": "$99", "screenshots": "$1f" });
     let rsc = format!("1:{}\n1f:Tffffff,<p>x", json!({ "project": broken }));
     let html = format!("<script>self.__next_f.push({})</script>", json!([1, rsc]));
-    let card = curseforge::page(&html, "jei");
+    let card = curseforge::page(&html, "mc-mods", "jei");
     assert_eq!(card.body, "");
     assert!(card.gallery.is_empty());
 
@@ -2020,7 +2033,7 @@ fn curseforge_pages_are_read_with_care() {
         other.len()
     );
     let html = format!("<script>self.__next_f.push({})</script>", json!([1, rsc]));
-    assert_eq!(curseforge::page(&html, "jei").body, about);
+    assert_eq!(curseforge::page(&html, "mc-mods", "jei").body, about);
     assert!(
         curseforge::media(&html)
             .starts_with(&format!("desc:{},raw_html:2,text_chunks_p:2,", about.len()))
@@ -2032,7 +2045,7 @@ fn curseforge_pages_are_read_with_care() {
         other.len()
     );
     let html = format!("<script>self.__next_f.push({})</script>", json!([1, rsc]));
-    assert_eq!(curseforge::page(&html, "jei").body, other);
+    assert_eq!(curseforge::page(&html, "mc-mods", "jei").body, other);
     // Screenshots listed beside the project, in their order, each once;
     // a picture elsewhere or without a thumbnail is not one.
     let shot = |index: u64, name: &str| {
@@ -2048,7 +2061,7 @@ fn curseforge_pages_are_read_with_care() {
                 { "url": "https://evil.example/attachments/x.png", "thumbnailUrl": "x" }] })
     );
     let html = format!("<script>self.__next_f.push({})</script>", json!([1, rsc]));
-    let titles: Vec<String> = curseforge::page(&html, "jei")
+    let titles: Vec<String> = curseforge::page(&html, "mc-mods", "jei")
         .gallery
         .into_iter()
         .map(|g| g.title)
@@ -2069,7 +2082,7 @@ fn curseforge_pages_are_read_with_care() {
     // JSON-LD and Open Graph when there is no stream.
     let html = r#"<script type="application/ld+json">{"@context":"https://schema.org","name":"Faithful","description":"32x","image":{"url":"https://media.forgecdn.net/a.png"},"author":[{"name":"xMrVizzy"}],"dateModified":"2024-01-01T00:00:00Z"}</script>
         <meta property="og:description" content="ignored">"#;
-    let card = curseforge::page(html, "faithful-32x");
+    let card = curseforge::page(html, "texture-packs", "faithful-32x");
     assert_eq!(card.id, None);
     assert_eq!(card.title, "Faithful");
     assert_eq!(card.summary, "32x");
@@ -2080,7 +2093,7 @@ fn curseforge_pages_are_read_with_care() {
     assert_eq!(card.authors, ["xMrVizzy"]);
     assert_eq!(card.updated, 1_704_067_200);
     let html = r#"<meta content="x" property="og:image"><meta property="og:image" content="javascript:alert(1)">"#;
-    assert_eq!(curseforge::page(html, "x").icon, None);
+    assert_eq!(curseforge::page(html, "mc-mods", "x").icon, None);
 
     // Junk ends quickly and gives nothing.
     let started = std::time::Instant::now();
@@ -2093,11 +2106,14 @@ fn curseforge_pages_are_read_with_care() {
     junk.push_str(&"{".repeat(100_000));
     junk.push_str("<script type=\"application/ld+json\">");
     junk.push_str("<meta property=\"og:title\"");
-    let card = curseforge::page(&junk, "jei");
+    let card = curseforge::page(&junk, "mc-mods", "jei");
     assert_eq!(card.id, None);
     assert_eq!(card.title, "");
     assert!(started.elapsed() < Duration::from_secs(10));
-    assert_eq!(curseforge::page("", "jei"), curseforge::Card::default());
+    assert_eq!(
+        curseforge::page("", "mc-mods", "jei"),
+        curseforge::Card::default()
+    );
 }
 
 /// The search page as the site sends it: hits in the stream, one of a class
@@ -2849,6 +2865,7 @@ async fn a_curseforge_modpack_has_its_files_found_kept_and_placed() {
         &curseforge::page_url("modpacks", "all-the-mods"),
         ok(cf_page(&project).replace("\"jei\"", "\"all-the-mods\"")),
     );
+    cf_number(&t.sites, ATM, "modpacks", "all-the-mods");
     let (status, request) = t
         .player(
             1,
@@ -3071,6 +3088,135 @@ fn curseforge_manifests_are_read_with_care() {
     ] {
         assert_eq!(curseforge::download_ids(bad), None, "{bad}");
     }
+}
+
+/// A page's stream with these values under one element.
+fn cf_stream(values: Value) -> String {
+    let rsc = format!("1:{}\n", json!(["$", "div", null, values]));
+    format!(
+        "<html><body><script>self.__next_f.push({})</script></body></html>",
+        json!([1, rsc])
+    )
+}
+
+#[test]
+fn a_page_names_its_project_not_what_shares_its_slug() {
+    // A server that runs the modpack, listed first; a mod and another
+    // game's project with the same slug, richer than the server.
+    let server = json!({ "id": 10683, "slug": "rlcraft", "gameId": 432, "name": "RLCraft server" });
+    let a_mod = json!({ "id": 7, "slug": "rlcraft", "gameId": 432, "classId": 6,
+        "name": "M", "summary": "S", "logo": {}, "authors": [], "downloadCount": 1 });
+    let other_game = json!({ "id": 8, "slug": "rlcraft", "gameId": 1, "classId": 4471,
+        "name": "G", "summary": "S", "logo": {}, "authors": [], "downloadCount": 1 });
+    let project = json!({ "id": 285_109, "slug": "rlcraft", "gameId": 432, "classId": 4471,
+        "name": "RLCraft", "summary": "Hard", "downloadCount": 9 });
+    let html = cf_stream(json!({
+        "servers": [server], "same": [a_mod, other_game], "project": project,
+    }));
+    let card = curseforge::page(&html, "modpacks", "rlcraft");
+    assert_eq!(card.id, Some(285_109));
+    assert_eq!(card.title, "RLCraft");
+    assert_eq!(card.downloads, 9);
+    let mut choices = curseforge::choices(&html, "modpacks", "rlcraft");
+    choices.sort_unstable();
+    assert_eq!(choices, [(10683, 3), (285_109, 13)]);
+    // Its class by name counts as its class.
+    let named = json!({ "id": 285_109, "slug": "rlcraft", "class": { "slug": "modpacks" }, "name": "RLCraft" });
+    let html = cf_stream(json!({ "servers": [server], "project": named }));
+    assert_eq!(
+        curseforge::page(&html, "modpacks", "rlcraft").id,
+        Some(285_109)
+    );
+    // Only the server: it is all there is (the importer checks its number).
+    let html = cf_stream(json!({ "servers": [server] }));
+    assert_eq!(
+        curseforge::page(&html, "modpacks", "rlcraft").id,
+        Some(10683)
+    );
+    // Nothing that names a class or a game.
+    let html = cf_stream(json!({ "x": { "id": 5, "slug": "rlcraft", "name": "X" } }));
+    assert_eq!(curseforge::page(&html, "modpacks", "rlcraft").id, None);
+}
+
+#[tokio::test]
+async fn a_number_read_from_a_page_counts_only_when_it_leads_back() {
+    const DECOY: u64 = 10683;
+    let t = setup();
+    curseforge_site(&t.sites);
+    let decoy = json!({ "id": DECOY, "slug": "jei", "gameId": 432, "name": "JEI server" });
+    t.sites.put(
+        &curseforge::page_url("mc-mods", "jei"),
+        ok(cf_stream(json!({ "servers": [decoy] }))),
+    );
+    // The decoy's number leads elsewhere: the address cannot be added.
+    t.sites.put(
+        &curseforge::number_url(DECOY),
+        Page {
+            status: 308,
+            location: Some("https://www.curseforge.com/minecraft".into()),
+            ..Page::default()
+        },
+    );
+    let input = json!({ "input": "https://www.curseforge.com/minecraft/mc-mods/jei" });
+    let (_, request) = t.player(1, "POST", "/v1/imports", input).await;
+    t.drain().await;
+    let id = request["id"].as_str().unwrap();
+    let (_, request) = t
+        .player(1, "GET", &format!("/v1/imports/{id}"), Value::Null)
+        .await;
+    assert_eq!(request["state"], "failed", "{request}");
+    assert_eq!(request["error"], "bad_answer");
+    assert_eq!(t.get("/v1/projects/jei").await.0, StatusCode::NOT_FOUND);
+    assert_eq!(t.sites.asked(&curseforge::files_url(DECOY, 0)), 0);
+
+    // A project kept under a wrong number (read before the check) takes
+    // the page's number at its next check, and its files with it.
+    cf_number(&t.sites, DECOY, "mc-mods", "jei");
+    t.sites.json(
+        &curseforge::files_url(DECOY, 0),
+        json!({ "data": [], "pagination": { "index": 0, "pageSize": 50, "totalCount": 0 } }),
+    );
+    assert!(import::queue_project(&t.app, curseforge::SOURCE, "mc-mods/jei", 0, None, 0).unwrap());
+    t.drain().await;
+    let (_, before) = t.get("/v1/projects/jei").await;
+    assert_eq!(before["sources"][0]["id"], DECOY.to_string());
+
+    let project = json!({ "id": JEI, "slug": "jei", "gameId": 432, "classId": 6,
+        "name": "Just Enough Items", "summary": "View items" });
+    t.sites.put(
+        &curseforge::page_url("mc-mods", "jei"),
+        ok(cf_stream(json!({ "servers": [decoy], "project": project }))),
+    );
+    let reference = format!("{DECOY}/mc-mods/jei");
+    assert!(import::queue_project(&t.app, curseforge::SOURCE, &reference, 0, None, 0).unwrap());
+    t.drain().await;
+    let (_, after) = t.get("/v1/projects/jei").await;
+    assert_eq!(after["id"], before["id"]);
+    assert_eq!(after["sources"][0]["id"], JEI.to_string(), "{after}");
+    assert_eq!(after["title"], "Just Enough Items");
+    let (_, versions) = t.get("/v1/projects/jei/versions").await;
+    assert!(versions["total"].as_i64().unwrap() > 0, "{versions}");
+
+    // A page that shows only another thing with the slug, whose number
+    // leads elsewhere: the project keeps its number and its card.
+    t.sites.put(
+        &curseforge::page_url("mc-mods", "jei"),
+        ok(cf_stream(json!({ "servers": [decoy] }))),
+    );
+    t.sites.put(
+        &curseforge::number_url(DECOY),
+        Page {
+            status: 308,
+            location: Some("https://www.curseforge.com/minecraft".into()),
+            ..Page::default()
+        },
+    );
+    let reference = format!("{JEI}/mc-mods/jei");
+    assert!(import::queue_project(&t.app, curseforge::SOURCE, &reference, 0, None, 0).unwrap());
+    t.drain().await;
+    let (_, kept) = t.get("/v1/projects/jei").await;
+    assert_eq!(kept["sources"][0]["id"], JEI.to_string());
+    assert_eq!(kept["title"], "Just Enough Items", "{kept}");
 }
 
 #[tokio::test]
