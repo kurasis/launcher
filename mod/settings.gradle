@@ -86,11 +86,15 @@ add 'mc-1.7.10:forge'
 }
 // The Java agent for releases with obfuscated names: one project per release, each a
 // folder of mod/agents built by mod/agents/agent.gradle.
-// Releases before 1.13 (MCP names, `mcp_version`) are built by mod/agents/legacy.gradle.
+// Releases before 1.13 (MCP names, `mcp_version`) are built by mod/agents/legacy.gradle,
+// 1.14 to 1.14.3 (no Mojang names, `from_release`) by mod/agents/intermediary.gradle.
 file('agents').eachDir { dir ->
     def props = new File(dir, 'gradle.properties')
     if (props.exists()) {
-        add "agents:${dir.name}", props.text.contains('mcp_version=') ? '../legacy.gradle' : '../agent.gradle'
+        def text = props.text
+        def script = text.contains('mcp_version=') ? '../legacy.gradle'
+                : text.contains('from_release=') ? '../intermediary.gradle' : '../agent.gradle'
+        add "agents:${dir.name}", script
     }
 }
 // The test bot for game runs on the test machine (docs/GAMETEST.md); never shipped to players.

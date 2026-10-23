@@ -2117,8 +2117,8 @@ archive from the Package workflow, upload it to
   | 1.15.2          | yes                 | no NeoForge then       | yes (JavaScript coremod) | Java agent       |
   | 1.15–1.15.1     | yes                 | no NeoForge then       | yes (JavaScript coremod) | Java agent       |
   | 1.14.4          | yes                 | no NeoForge then       | yes (JavaScript coremod) | Java agent       |
-  | 1.14.2–1.14.3   | yes                 | no NeoForge then       | yes (JavaScript coremod) | no               |
-  | 1.14–1.14.1     | yes                 | no NeoForge then       | no Forge then            | no               |
+  | 1.14.2–1.14.3   | yes                 | no NeoForge then       | yes (JavaScript coremod) | Java agent       |
+  | 1.14–1.14.1     | yes                 | no NeoForge then       | no Forge then            | Java agent       |
   | 1.12.2          | no Fabric then      | no NeoForge then       | yes (ASM coremod)        | Java agent       |
   | 1.11.2          | no Fabric then      | no NeoForge then       | yes (ASM coremod)        | Java agent       |
   | 1.10.2          | no Fabric then      | no NeoForge then       | yes (ASM coremod)        | Java agent       |
@@ -2132,10 +2132,11 @@ archive from the Package workflow, upload it to
   rewrites the same game method the mods hook: one for 26.x and the snapshot, whose names
   are not obfuscated, and one per release before 26.1, built in Mojang names (MCP names
   for 1.12.2 and older, on the Forge jar's game layer) and remapped to that release's
-  names. OptiFine on its own (D-039) runs the agent too, from mod 0.8.0 on: OptiFine
-  starts the game through launchwrapper, whose class loader the agent joins. Its capes
-  stay where OptiFine shows one. Not yet covered: Forge 1.13.2 and the agent for 1.13.2
-  to 1.14.3.
+  names; 1.14 to 1.14.3 have no Mojang names either, and their agents are the 1.14.4 one
+  remapped through Fabric's intermediary names, which those releases share. OptiFine on
+  its own (D-039) runs the agent too, from mod 0.8.0 on: OptiFine starts the game
+  through launchwrapper, whose class loader the agent joins. Its capes stay where
+  OptiFine shows one. Not yet covered: 1.13.2 (Forge and the agent).
 
   Played in the real game by the Game test (docs/GAMETEST.md) every night: 26.3,
   1.21.11, 1.21.1, 1.20.1 and 1.12.2 with every loader they have and without one, and

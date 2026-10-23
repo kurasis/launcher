@@ -67,7 +67,9 @@ none for them: a profile without textures whose UUID is not a Mojang one (versio
   ASM (relocated); it reads its targets from `AgentHooks.targets`, whose calls the
   remapping rewrites. 1.7.10 to 1.12.2 have no Mojang names: their agents
   (`agents/legacy.gradle`, Unimined) take the Forge jar's game layer in MCP names and
-  `agents/legacy/<release>/AgentHooks.java`. With OptiFine on its own the game runs in
+  `agents/legacy/<release>/AgentHooks.java`. 1.14 to 1.14.3 have no Mojang names but
+  share Fabric's intermediary names with 1.14.4 for everything the agent touches:
+  `agents/intermediary.gradle` remaps the 1.14.4 agent's intermediary jar to each. With OptiFine on its own the game runs in
   launchwrapper's class loader, which on Java 9 and newer does not see the agent's jar:
   the agent adds it there (`Agent.reach`) before the first rewritten class runs.
 
