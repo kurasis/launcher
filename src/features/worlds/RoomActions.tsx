@@ -1,5 +1,6 @@
 import { useId, useRef, type Ref } from 'react';
 import { Button } from '../../components/Button';
+import { Icon } from '../../components/Icon';
 import { Notice } from '../../components/Notice';
 import { useFocusBack } from '../../components/useFocusBack';
 import type { LocalWorld, WorldsRoom, WorldsState } from '../../lib/contracts';
@@ -87,7 +88,7 @@ export function RoomStartButtons({
 /**
  * Play and the way out for the room this computer hosts or is a guest in: Close the
  * world, or Leave the world in every state of the connection, with Join again once
- * it is lost.
+ * it is lost; Close once the hosted world has ended.
  */
 export function RoomPlayButtons({
   actions,
@@ -106,6 +107,8 @@ export function RoomPlayButtons({
   describedBy?: string | undefined;
 }) {
   const hosting = state.hosting?.room === roomId && state.hosting.ended === null;
+  const ended =
+    state.hosting?.room === roomId && state.hosting.ended !== null && !state.hosting.reopening;
   const guest = state.guest?.room === roomId ? state.guest : null;
   const lost = guest !== null && !guest.connected && !guest.reconnecting;
   // Play waits for the server, the connection and the mods question, and keeps the
@@ -126,6 +129,7 @@ export function RoomPlayButtons({
         if (canPlay) actions.play();
       }}
     >
+      {size === 'normal' && <Icon name="play" size={18} />}
       {t.play}
     </Button>
   );
@@ -138,6 +142,11 @@ export function RoomPlayButtons({
             {t.stopHosting}
           </Button>
         </>
+      )}
+      {ended && (
+        <Button size={size} aria-disabled={leaving} onClick={actions.stopHosting}>
+          {t.close}
+        </Button>
       )}
       {guest !== null && !lost && playButton}
       {lost && (

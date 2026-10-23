@@ -476,6 +476,12 @@ describe('WorldsView', () => {
               hosting: false,
             },
       worlds_redeem: () => theirs,
+      // The room just joined is in neither list yet: its page loads by itself.
+      worlds_rooms: () => [mine],
+      worlds_room: () => ({
+        room: theirs,
+        members: [{ account: ME, nick: 'Host_Player', role: 'member', state: 'active', joined: 1 }],
+      }),
     });
     await screen.findByText('Our base');
     fireEvent.click(screen.getByRole('button', { name: 'Join with a code' }));
@@ -495,6 +501,11 @@ describe('WorldsView', () => {
     fireEvent.click(dialog.getByRole('button', { name: 'Join the room' }));
     await waitFor(() => {
       expect(called(calls, 'worlds_redeem')).toHaveLength(1);
+    });
+    // The room's title keeps the focus while the page comes in.
+    const title = await screen.findByRole('heading', { level: 2, name: 'Friend world' });
+    await waitFor(() => {
+      expect(title).toHaveFocus();
     });
   });
 
@@ -648,24 +659,58 @@ describe('WorldsView', () => {
   });
 
   it('manages members and makes invite codes on a room page', async () => {
+    let removed = false;
     const { calls } = setup({
       worlds_invite: () => ({
         invite: { id: 'i', created: 1, expires: 1_760_086_400, maxUses: 1, uses: 0 },
         code: 'abcdefghijklmnopqrstuv',
       }),
+      worlds_moderate: () => {
+        removed = true;
+        return null;
+      },
+      worlds_room: () => ({
+        room: mine,
+        members: [
+          { account: ME, nick: 'Host_Player', role: 'owner', state: 'active', joined: 1 },
+          {
+            account: FRIEND,
+            nick: 'Guest_One',
+            role: 'member',
+            state: removed ? 'removed' : 'active',
+            joined: 2,
+          },
+        ],
+      }),
     });
     const card = within((await screen.findByText('Our base')).closest('li') as HTMLElement);
-    fireEvent.click(card.getByRole('button', { name: 'Open' }));
-    expect(await screen.findByText('Guest_One')).toBeInTheDocument();
+    const open = card.getByRole('button', { name: 'Open' });
+    open.focus();
+    fireEvent.click(open);
+    // The room's page is its own screen, its name the title that takes the focus.
+    const title = await screen.findByRole('heading', { level: 2, name: 'Our base' });
+    await waitFor(() => {
+      expect(title).toHaveFocus();
+    });
+    const members = within(await screen.findByRole('region', { name: 'Members 2' }));
+    const self = within(members.getByText('Host_Player').closest('li') as HTMLElement);
+    expect(self.getByText('This is you')).toBeInTheDocument();
+    expect(self.queryByRole('button')).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Make a code' }));
     expect(await screen.findByText('abcdefghijklmnopqrstuv')).toBeInTheDocument();
     expect(called(calls, 'worlds_invite')[0]?.args).toEqual({ room: ROOM, hours: 24, uses: 1 });
 
-    // Removing asks first.
-    fireEvent.click(screen.getByRole('button', { name: 'Remove' }));
-    const dialog = within(screen.getByRole('dialog'));
-    expect(dialog.getByText(/Remove Guest_One from the room/)).toBeInTheDocument();
-    fireEvent.click(dialog.getByRole('button', { name: 'Remove' }));
+    // The owner is never offered to be removed, and cannot leave.
+    expect(members.getAllByRole('button', { name: 'Remove' })).toHaveLength(1);
+    expect(screen.queryByRole('button', { name: 'Room actions' })).toBeNull();
+
+    // Removing asks first, in place.
+    const remove = members.getByRole('button', { name: 'Remove' });
+    remove.focus();
+    fireEvent.click(remove);
+    const question = within(screen.getByRole('alertdialog', { name: 'Guest_One' }));
+    expect(question.getByText(/Remove \u2068Guest_One\u2069 from the room/)).toBeInTheDocument();
+    fireEvent.click(question.getByRole('button', { name: 'Remove' }));
     await waitFor(() => {
       expect(called(calls, 'worlds_moderate')[0]?.args).toEqual({
         room: ROOM,
@@ -673,9 +718,100 @@ describe('WorldsView', () => {
         action: 'remove',
       });
     });
-    // The owner is never offered to be removed, and cannot leave.
-    expect(screen.getAllByRole('button', { name: 'Remove' })).toHaveLength(1);
-    expect(screen.queryByRole('button', { name: 'Leave the room' })).toBeNull();
+    // The question closes once the page shows the member gone: the list has the focus
+    // the row's buttons took along.
+    await waitFor(() => {
+      expect(screen.queryByRole('alertdialog')).toBeNull();
+    });
+    expect(members.getByText('Not in the room')).toBeInTheDocument();
+    expect(members.queryByRole('button', { name: 'Remove' })).toBeNull();
+    await waitFor(() => {
+      expect(screen.getByRole('list', { name: 'Members' })).toHaveFocus();
+    });
+
+    // Back to the rooms: the room's Open has the focus again.
+    fireEvent.click(screen.getByRole('button', { name: 'Back to rooms' }));
+    const again = within((await screen.findByText('Our base')).closest('li') as HTMLElement);
+    await waitFor(() => {
+      expect(again.getByRole('button', { name: 'Open' })).toHaveFocus();
+    });
+  });
+
+  it('lets a member leave the room from its menu, and moderates only lower roles', async () => {
+    const OTHER_MANAGER = '33333333-3333-4333-8333-333333333333';
+    const PLAYER = '44444444-4444-4444-8444-444444444444';
+    const { calls } = setup({
+      worlds_room: () => ({
+        room: { ...theirs, role: 'manager' },
+        members: [
+          { account: FRIEND, nick: 'Guest_One', role: 'owner', state: 'active', joined: 1 },
+          { account: ME, nick: 'Host_Player', role: 'manager', state: 'active', joined: 2 },
+          { account: OTHER_MANAGER, nick: 'Second', role: 'manager', state: 'active', joined: 3 },
+          { account: PLAYER, nick: 'Player_3', role: 'member', state: 'active', joined: 4 },
+          { account: 'gone', nick: 'Gone_4', role: 'member', state: 'banned', joined: 5 },
+        ],
+      }),
+      worlds_leave_room: () => null,
+    });
+    const card = within((await screen.findByText('Friend world')).closest('li') as HTMLElement);
+    fireEvent.click(card.getByRole('button', { name: 'Open' }));
+    const members = within(await screen.findByRole('region', { name: 'Members 4' }));
+    // A manager moderates members only: not the owner, not another manager, not itself.
+    expect(members.getAllByRole('button', { name: 'Remove' })).toHaveLength(1);
+    const player = within(members.getByText('Player_3').closest('li') as HTMLElement);
+    expect(player.getByRole('button', { name: 'Ban' })).toBeInTheDocument();
+    const gone = within(members.getByText('Gone_4').closest('li') as HTMLElement);
+    expect(gone.getByText('Banned')).toBeInTheDocument();
+    expect(gone.queryByRole('button')).toBeNull();
+
+    const menu = screen.getByRole('button', { name: 'Room actions' });
+    fireEvent.click(menu);
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Leave the room' }));
+    const question = within(await screen.findByRole('alertdialog', { name: 'Friend world' }));
+    // "No" gives the focus back to the menu.
+    fireEvent.click(question.getByRole('button', { name: 'Cancel' }));
+    await waitFor(() => {
+      expect(menu).toHaveFocus();
+    });
+    fireEvent.click(menu);
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Leave the room' }));
+    const again = within(await screen.findByRole('alertdialog', { name: 'Friend world' }));
+    fireEvent.click(again.getByRole('button', { name: 'Leave the room' }));
+    await waitFor(() => {
+      expect(called(calls, 'worlds_leave_room')[0]?.args).toEqual({ room: OTHER });
+    });
+    expect(
+      await screen.findByRole('heading', { level: 2, name: 'Worlds with friends' }),
+    ).toBeInTheDocument();
+  });
+
+  it('puts Play and Close the world in the head of the room this computer hosts', async () => {
+    setup({
+      worlds_state: () => ({
+        ...idle,
+        hosting: {
+          room: ROOM,
+          world: WORLD,
+          phase: 'ready',
+          players: ['Host_Player', 'Guest_One'],
+          ended: null,
+          reopening: false,
+          clean: null,
+        },
+      }),
+    });
+    const card = within((await screen.findByText('Our base')).closest('li') as HTMLElement);
+    fireEvent.click(card.getByRole('button', { name: 'Open' }));
+    await screen.findByRole('heading', { level: 2, name: 'Our base' });
+    const band = within(screen.getByRole('region', { name: 'World state' }));
+    expect(band.getByText('\u2068Our base\u2069 is open')).toBeInTheDocument();
+    expect(band.queryByRole('button')).toBeNull();
+    expect(screen.getAllByRole('button', { name: 'Play' })).toHaveLength(1);
+    expect(screen.getByRole('button', { name: 'Close the world' })).toBeInTheDocument();
+    // Who is in the world, by the host's own list.
+    const members = within(await screen.findByRole('region', { name: 'Members 2' }));
+    const guest = within(members.getByText('Guest_One').closest('li') as HTMLElement);
+    expect(guest.getByText('In the world')).toBeInTheDocument();
   });
 
   it('sends a fresh invite code to a friend in a direct chat', async () => {
@@ -705,7 +841,7 @@ describe('WorldsView', () => {
     fireEvent.click(card.getByRole('button', { name: 'Open' }));
     fireEvent.click(await screen.findByRole('button', { name: 'Make a code' }));
     fireEvent.click(await screen.findByRole('button', { name: 'Send in a chat' }));
-    expect(await screen.findByText('Code sent to Guest_One.')).toBeInTheDocument();
+    expect(await screen.findByText('Code sent to \u2068Guest_One\u2069.')).toBeInTheDocument();
     expect(called(calls, 'friends_open_direct')[0]?.args).toEqual({ id: FRIEND });
     expect(called(calls, 'friends_send')[0]?.args).toEqual({
       room: 'chat-1',
@@ -1007,7 +1143,7 @@ describe('WorldsView', () => {
     const list = within(await screen.findByRole('list', { name: 'Backups of this world' }));
     expect(list.getByText(/After playing/)).toBeInTheDocument();
     fireEvent.click(list.getByRole('button', { name: 'Restore' }));
-    const dialog = within(screen.getByRole('dialog'));
+    const dialog = within(screen.getByRole('alertdialog', { name: 'Our base' }));
     const date = new Date(backup.createdAt).toLocaleString('en');
     expect(
       dialog.getByText((text) => text.includes(`from ${date} in place of Our base`)),
@@ -1065,6 +1201,12 @@ describe('WorldsView', () => {
     const card = within((await screen.findByText('Our base')).closest('li') as HTMLElement);
     fireEvent.click(card.getByRole('button', { name: 'Open' }));
     expect(await screen.findByText("Set 1 of the world's mods, 2 mods.")).toBeInTheDocument();
+    expect(
+      screen.getByText('Taken from the installation “\u2068Fabric pack\u2069”.'),
+    ).toBeInTheDocument();
+    // The update tools are folded until asked for.
+    expect(screen.queryByLabelText('From the installation')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Update the mods' }));
     const from = screen.getByLabelText('From the installation');
     await within(from).findByText('Fabric pack');
     expect(within(from).queryByText('Older pack')).toBeNull();
@@ -1129,12 +1271,38 @@ describe('WorldsView', () => {
     });
     const card = within((await screen.findByText('Our base')).closest('li') as HTMLElement);
     fireEvent.click(card.getByRole('button', { name: 'Open' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Update the mods' }));
     await screen.findByRole('option', { name: 'Pack' });
     fireEvent.click(screen.getByRole('button', { name: 'Show the changes' }));
     fireEvent.click(await screen.findByRole('button', { name: 'Update the world' }));
     expect(
       await screen.findByText(/did not start on a copy of the world, so the world has not changed/),
     ).toBeInTheDocument();
+  });
+
+  it('keeps the focus on Back up now while the backup it started runs', async () => {
+    const { calls } = setup({
+      worlds_local: () => [{ ...local, played: true }],
+      worlds_backups: () => [],
+      worlds_back_up: () => new Promise(() => undefined),
+    });
+    const card = within((await screen.findByText('Our base')).closest('li') as HTMLElement);
+    fireEvent.click(card.getByRole('button', { name: 'Open' }));
+    const backUp = await screen.findByRole('button', { name: 'Back up now' });
+    backUp.focus();
+    fireEvent.click(backUp);
+    await act(async () => {
+      await emit('worlds://state', { ...idle, maintenance: true });
+    });
+    expect(backUp).not.toBeDisabled();
+    expect(backUp).toHaveAttribute('aria-disabled', 'true');
+    expect(screen.getByRole('button', { name: 'Export as ZIP' })).toHaveAttribute(
+      'aria-disabled',
+      'true',
+    );
+    expect(screen.getByText('Working…')).toBeInTheDocument();
+    fireEvent.click(backUp);
+    expect(called(calls, 'worlds_back_up')).toHaveLength(1);
   });
 
   it('waits with backups while the world is open', async () => {

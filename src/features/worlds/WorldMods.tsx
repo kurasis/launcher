@@ -1,6 +1,9 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { Button } from '../../components/Button';
 import { Notice } from '../../components/Notice';
+import { Panel } from '../../components/Panel';
+import { useFocusBack } from '../../components/useFocusBack';
+import { Field } from '../../components/Field';
 import forms from '../../components/forms.module.css';
 import type {
   LocalWorld,
@@ -15,6 +18,7 @@ import type {
 import { formatBytes } from '../../lib/format';
 import { ipc } from '../../lib/ipc';
 import { strings } from '../../lib/strings';
+import { isolate } from '../mods/helpers';
 import { worldsErrorText } from './useWorlds';
 import styles from './Worlds.module.css';
 
@@ -108,7 +112,11 @@ function ConflictView({
  */
 export function WorldMods({ room, world, state }: Props) {
   const t = strings.worlds.update;
+  // Every installation: the world's own source is named even when it no longer fits.
   const [sources, setSources] = useState<WorldsModSource[] | null>(null);
+  const [open, setOpen] = useState(false);
+  const toolsId = useId();
+  const toggle = useRef<HTMLButtonElement>(null);
   const [chosen, setChosen] = useState('');
   const [preview, setPreview] = useState<WorldsUpdatePreview | null>(null);
   const [choices, setChoices] = useState<Record<string, WorldsKeep>>({});
@@ -121,20 +129,27 @@ export function WorldMods({ room, world, state }: Props) {
     ipc
       .worldsModSources()
       .then((all) => {
-        setSources(all.filter((s) => s.minecraft === world.minecraft && s.loader.kind === kind));
+        setSources(Array.isArray(all) ? all : []);
       })
       .catch(() => {
         setSources([]);
       });
-  }, [world.minecraft, kind]);
+  }, []);
 
-  const list = sources ?? [];
+  const list = (sources ?? []).filter(
+    (s) => s.minecraft === world.minecraft && s.loader.kind === kind,
+  );
+  const from = sources?.find((s) => s.instanceId === world.source)?.name ?? null;
   const picked = list.some((s) => s.instanceId === chosen)
     ? chosen
     : (list.find((s) => s.instanceId === world.source)?.instanceId ?? list[0]?.instanceId ?? '');
   const hosted = state.hosting?.world === world.id && state.hosting.clean === null;
-  const waiting = state.maintenance || state.preparing !== null || state.guest !== null;
+  // The update's own press sets `maintenance`: that wait keeps the focus where it is.
+  const waiting = state.preparing !== null || state.guest !== null;
+  const working = busy || state.maintenance;
   const answered = preview !== null && preview.conflicts.every((c) => c.path in choices);
+  // Update the world goes with the preview it answered: the focus goes to the toggle.
+  useFocusBack(preview === null, toggle);
 
   const run = (action: () => Promise<string | null>) => {
     setBusy(true);
@@ -151,6 +166,7 @@ export function WorldMods({ room, world, state }: Props) {
   };
 
   const show = () => {
+    if (working) return;
     setPreview(null);
     setChoices({});
     run(async () => {
@@ -160,6 +176,7 @@ export function WorldMods({ room, world, state }: Props) {
   };
 
   const apply = (shown: WorldsUpdatePreview) => {
+    if (working) return;
     const reopen = hosted;
     run(async () => {
       if (reopen) await ipc.worldsStopHosting();
@@ -177,95 +194,122 @@ export function WorldMods({ room, world, state }: Props) {
   };
 
   return (
-    <section className={styles.section} aria-label={t.title}>
-      <h4 className={styles.sectionTitle}>{t.title}</h4>
+    <Panel
+      title={t.title}
+      level={3}
+      count={world.mods}
+      aside={
+        <Button
+          ref={toggle}
+          size="small"
+          aria-expanded={open}
+          aria-controls={open ? toolsId : undefined}
+          onClick={() => {
+            setOpen((now) => !now);
+          }}
+        >
+          {t.open}
+        </Button>
+      }
+    >
       {world.generation !== null && (
-        <p>{t.current({ generation: world.generation, count: world.mods })}</p>
+        <p className={styles.panelHint}>
+          {t.current({ generation: world.generation, count: world.mods })}
+        </p>
+      )}
+      {from !== null && (
+        <p className={styles.panelHint}>{strings.worlds.modsFrom({ name: isolate(from) })}</p>
       )}
       {world.updatePending && <Notice tone="info">{t.pending}</Notice>}
-      <p className={styles.muted}>{t.hint}</p>
-      {sources !== null && list.length === 0 ? (
-        <p className={styles.muted}>{t.noSources({ version: world.minecraft })}</p>
-      ) : (
-        <div className={forms.row}>
-          <label>
-            {t.source}{' '}
-            <select
-              className={forms.select}
-              value={picked}
-              onChange={(e) => {
-                setChosen(e.target.value);
-                setPreview(null);
-              }}
-            >
-              {list.map((source) => (
-                <option key={source.instanceId} value={source.instanceId}>
-                  {source.name}
-                </option>
-              ))}
-            </select>
-          </label>
-          <Button disabled={busy || waiting || picked === ''} onClick={show}>
-            {t.show}
-          </Button>
-        </div>
-      )}
-      {preview !== null &&
-        (preview.same ? (
-          <p className={styles.muted}>{t.same}</p>
-        ) : (
-          <div className={styles.status}>
-            <p>{t.next({ generation: preview.next })}</p>
-            {preview.loaderChanged && <p>{t.loaderChanged({ version: preview.loader.version })}</p>}
-            <Changes title={t.added} list={preview.added} />
-            <Changes title={t.removed} list={preview.removed} />
-            <Changes title={t.updated} list={preview.updated} />
-            {preview.settings > 0 && (
-              <p className={styles.muted}>{t.settings({ count: preview.settings })}</p>
-            )}
-            {preview.conflicts.length > 0 && (
-              <>
-                <p className={styles.statusTitle}>{t.conflictsTitle}</p>
-                <p className={styles.muted}>{t.conflictsHint}</p>
-                <ul className={styles.members}>
-                  {preview.conflicts.map((conflict) => (
-                    <ConflictView
-                      key={conflict.path}
-                      conflict={conflict}
-                      keep={choices[conflict.path]}
-                      onKeep={(keep) => {
-                        setChoices((current) => ({ ...current, [conflict.path]: keep }));
-                      }}
-                    />
-                  ))}
-                </ul>
-              </>
-            )}
-            {hosted && <p className={styles.muted}>{t.whileHosted}</p>}
-            <div className={styles.actions}>
+      {open && (
+        <div id={toolsId} className={styles.tools}>
+          <p className={styles.panelHint}>{t.hint}</p>
+          {sources !== null && list.length === 0 ? (
+            <p className={styles.panelHint}>{t.noSources({ version: world.minecraft })}</p>
+          ) : (
+            <div className={styles.toolsRow}>
+              <Field label={t.source}>
+                {(field) => (
+                  <select
+                    {...field}
+                    className={forms.select}
+                    value={picked}
+                    onChange={(e) => {
+                      setChosen(e.target.value);
+                      setPreview(null);
+                    }}
+                  >
+                    {list.map((source) => (
+                      <option key={source.instanceId} value={source.instanceId}>
+                        {source.name}
+                      </option>
+                    ))}
+                  </select>
+                )}
+              </Field>
               <Button
-                variant="primary"
-                disabled={busy || waiting || !answered}
-                onClick={() => {
-                  apply(preview);
-                }}
+                disabled={waiting || picked === ''}
+                aria-disabled={working || undefined}
+                onClick={show}
               >
-                {t.apply}
+                {t.show}
               </Button>
             </div>
-          </div>
-        ))}
-      {busy && preview === null && (
-        <p className={styles.muted} role="status">
-          {strings.backups.working}
-        </p>
+          )}
+          {preview !== null &&
+            (preview.same ? (
+              <p className={styles.muted}>{t.same}</p>
+            ) : (
+              <div className={styles.status}>
+                <p>{t.next({ generation: preview.next })}</p>
+                {preview.loaderChanged && (
+                  <p>{t.loaderChanged({ version: preview.loader.version })}</p>
+                )}
+                <Changes title={t.added} list={preview.added} />
+                <Changes title={t.removed} list={preview.removed} />
+                <Changes title={t.updated} list={preview.updated} />
+                {preview.settings > 0 && (
+                  <p className={styles.muted}>{t.settings({ count: preview.settings })}</p>
+                )}
+                {preview.conflicts.length > 0 && (
+                  <>
+                    <p className={styles.statusTitle}>{t.conflictsTitle}</p>
+                    <p className={styles.muted}>{t.conflictsHint}</p>
+                    <ul className={styles.members}>
+                      {preview.conflicts.map((conflict) => (
+                        <ConflictView
+                          key={conflict.path}
+                          conflict={conflict}
+                          keep={choices[conflict.path]}
+                          onKeep={(keep) => {
+                            setChoices((current) => ({ ...current, [conflict.path]: keep }));
+                          }}
+                        />
+                      ))}
+                    </ul>
+                  </>
+                )}
+                {hosted && <p className={styles.muted}>{t.whileHosted}</p>}
+                <div className={styles.actions}>
+                  <Button
+                    variant="primary"
+                    disabled={waiting || !answered}
+                    aria-disabled={working || undefined}
+                    onClick={() => {
+                      apply(preview);
+                    }}
+                  >
+                    {t.apply}
+                  </Button>
+                </div>
+              </div>
+            ))}
+        </div>
       )}
-      {note !== null && (
-        <p className={styles.muted} role="status">
-          {note}
-        </p>
-      )}
+      <p className={styles.live} role="status">
+        {busy && preview === null ? strings.backups.working : (note ?? '')}
+      </p>
       {error !== null && <Notice tone="danger">{error}</Notice>}
-    </section>
+    </Panel>
   );
 }

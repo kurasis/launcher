@@ -2675,6 +2675,8 @@ export type Messages = {
         world: string | number;
       }) => string;
       readonly restored: (values: { date: string | number }) => string;
+      readonly row: (values: { reason: string | number; size: string | number }) => string;
+      readonly dayTime: (values: { day: string | number; time: string | number }) => string;
     };
     readonly update: {
       readonly title: string;
@@ -2712,6 +2714,7 @@ export type Messages = {
       readonly done: (values: { generation: string | number }) => string;
       readonly trialFailed: string;
       readonly rolledBack: string;
+      readonly open: string;
     };
     readonly devices: {
       readonly open: string;
@@ -2738,6 +2741,12 @@ export type Messages = {
       readonly none: string;
       readonly importNamed: (values: { name: string | number }) => string;
     };
+    readonly roomActions: string;
+    readonly you: string;
+    readonly inWorld: string;
+    readonly memberGone: string;
+    readonly memberBanned: string;
+    readonly modsFrom: (values: { name: string | number }) => string;
   };
   readonly metered: {
     readonly toggle: string;

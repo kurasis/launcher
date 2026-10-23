@@ -2506,7 +2506,9 @@
         "list": "Backups of this world",
         "created": "Backed up.",
         "confirmRestore": "Put the backup from {date} in place of {world}? The world as it is now is backed up first.",
-        "restored": "The backup from {date} is back in place."
+        "restored": "The backup from {date} is back in place.",
+        "row": "{reason}, {size}",
+        "dayTime": "{day}, {time}"
       },
       "update": {
         "title": "The world's mods",
@@ -2543,7 +2545,8 @@
         "apply": "Update the world",
         "done": "The world has set {generation} of its mods. Friends get them the next time they join.",
         "trialFailed": "The new mods did not start on a copy of the world, so the world has not changed.",
-        "rolledBack": "The world did not start with its new mods, so its earlier mods and the backup made before the update are back."
+        "rolledBack": "The world did not start with its new mods, so its earlier mods and the backup made before the update are back.",
+        "open": "Update the mods"
       },
       "devices": {
         "open": "Computers",
@@ -2569,7 +2572,13 @@
         "meta": "{installation}, {game}",
         "none": "There are no single-player worlds in your installations yet.",
         "importNamed": "Import {name}"
-      }
+      },
+      "roomActions": "Room actions",
+      "you": "This is you",
+      "inWorld": "In the world",
+      "memberGone": "Not in the room",
+      "memberBanned": "Banned",
+      "modsFrom": "Taken from the installation “{name}”."
     },
     "metered": {
       "toggle": "Metered connection",
