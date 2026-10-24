@@ -133,6 +133,12 @@ fn frontend_is_packaged_locally() {
         windows[0].get("url").is_none(),
         "window must load packaged UI"
     );
+    // The core opens it once the settings give its first look (lifecycle::look),
+    // through the queue like every window.
+    assert_eq!(windows[0]["create"], false);
+    let lib = include_str!("../src/lib.rs");
+    let setup = &lib[lib.find("fn setup(").expect("setup")..];
+    assert!(setup[..setup.find("\n}").expect("end")].contains(".show_main_window(app.handle())"));
 }
 
 #[test]
