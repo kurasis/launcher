@@ -72,11 +72,14 @@ The bot (`mod/gametest/core/Bot.java`) then:
 - closes any screen that a mod opens over the world, writes `report.json` and quits.
 
 A scenario passes when every bot check passes, the game exits with code 0 within the time
-limit and leaves no crash report.
+limit and leaves no crash report. After its report the bot closes the game, which gets four
+minutes to save the world and exit.
 
 A crash the launcher's diagnosis blames on a mod of the `medium` set, or whose stack
 trace (crash report, else the log from the exception that ended the game) first reaches
-a class of one of its jars, is that mod's problem, not ours: the harness notes that version as crashing on this loader build
+a class of one of its jars, or that the loader refuses before the game starts (Forge's
+"Mod File:" of a mod loading crash, FML 1.7.10's "Found a duplicate mod", whose first jar
+goes), is that mod's problem, not ours: the harness notes that version as crashing on this loader build
 (`gametest-cache/incompatible.json` in the data folder, kept between runs), and plays the
 scenario again with another version of the mod or without it, up to three plays. The
 earlier plays' files are in `attempt-<n>/` of the scenario's folder. To try a remembered

@@ -711,9 +711,10 @@ async fn the_game_is_played_with_mods_and_skins() {
                 }
                 break;
             }
-            // The bot closes the game itself; give it a minute to do so after its report.
+            // The bot closes the game itself. Saving the far places it flew to can take
+            // minutes on the test machine (OptiFine 1.20.1, Quilt 1.16.5 with mods).
             if read_report().is_some_and(|r| r["finished"] == true) {
-                let deadline = Instant::now() + Duration::from_secs(90);
+                let deadline = Instant::now() + Duration::from_secs(240);
                 while !host.finished.lock().unwrap().contains(&run.run_id)
                     && Instant::now() < deadline
                 {
@@ -789,6 +790,7 @@ async fn the_game_is_played_with_mods_and_skins() {
             .then(|| {
                 blamed(&diagnosis, &set)
                     .or_else(|| mods::blamed_by_stack(&stack, &set, &game_dir.join("mods")))
+                    .or_else(|| mods::blamed_by_loader(&stack, &log_text, &set))
             })
             .flatten();
         let retry = culprit.is_some() && attempt < MAX_ATTEMPTS;
