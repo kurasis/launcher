@@ -141,7 +141,8 @@ $scenarios = @(
   @{ name = 'dark'; theme = 'dark'; language = 'en'; appsLight = 1 },
   @{ name = 'dark-arabic'; theme = 'dark'; language = 'ar'; appsLight = 1 },
   @{ name = 'system-dark'; theme = 'system'; language = 'en'; appsLight = 0 },
-  @{ name = 'system-light'; theme = 'system'; language = 'en'; appsLight = 1 }
+  @{ name = 'system-light'; theme = 'system'; language = 'en'; appsLight = 1 },
+  @{ name = 'light-on-dark-system'; theme = 'light'; language = 'en'; appsLight = 0 }
 )
 $personalize = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize'
 if (-not (Test-Path $personalize)) { New-Item -Path $personalize -Force | Out-Null }
@@ -178,7 +179,13 @@ foreach ($s in $scenarios) {
     $runs = @()
     $prev = $null
     $size = ''
+    $nextSave = 0
     foreach ($f in $frames) {
+      # The sequence of the last start, a frame every 100 ms up to 1.6 s.
+      if ($i -eq $Starts -and $f.Image -and $f.T -ge $nextSave -and $f.T -le 1600) {
+        $f.Image.Save((Join-Path $Out "$($s.name)-seq-$('{0:D4}' -f $f.T)ms.png"), [System.Drawing.Imaging.ImageFormat]::Png)
+        $nextSave = $f.T + 100
+      }
       if ($f.Image) {
         $d = [FirstFrame]::Describe($f.Image, $rtl)
         $size = "$($f.Image.Width)x$($f.Image.Height)"
