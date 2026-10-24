@@ -37,6 +37,10 @@ the origin first, our mirror only when it fails or is very slow, as the project'
 mirror rule wants), `mirror_first` (the mirror, the origin when it fails) or
 `origin_only`.
 
+The input `channel` is the update channel of Settings → General, written the same way:
+`stable` (default, what a new player has) or `beta`, which also gets a skins mod release
+from the beta list before the game test moves it to stable.
+
 1. A GitHub runner takes the installer from the newest green Package run on `main`
    (`launcher-windows-x64`) and the interface texts of every language.
 2. The test machine installs it silently into `%LOCALAPPDATA%\launcher-usertest\app`
