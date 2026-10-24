@@ -28,10 +28,14 @@ tasks.withType(JavaCompile).configureEach {
     options.encoding = 'UTF-8'
 }
 
+// Fabric reads a snapshot's version as 26.4-alpha.5, never 26.4-snapshot-5: the snapshot's bot
+// takes the range of the skins mod's jar (mod/mc-snapshot/fabric).
+def minecraftRange = findProperty('fabric_range') ?: minecraft_version
+
 processResources {
     inputs.property 'version', project.version
-    inputs.property 'minecraft', minecraft_version
+    inputs.property 'minecraft', minecraftRange
     filesMatching('fabric.mod.json') {
-        expand version: project.version, minecraft: minecraft_version
+        expand version: project.version, minecraft: minecraftRange
     }
 }
