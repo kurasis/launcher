@@ -1774,6 +1774,8 @@ export type Messages = {
     readonly broughtBack: (values: { name: string | number }) => string;
     readonly keepRange: (values: { max: number }) => string;
     readonly loading: string;
+    readonly deletedSpace: (values: { count: number; size: string | number }) => string;
+    readonly deletedAll: string;
   };
   readonly gallery: {
     readonly title: string;

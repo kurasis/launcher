@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useId, useRef, useState, type ReactNode } from 'react';
 import { Button } from '../../components/Button';
 import { Confirm } from '../../components/Confirm';
+import { Fact, Facts } from '../../components/Facts';
 import { Field } from '../../components/Field';
 import { Icon } from '../../components/Icon';
 import { LiveStatus } from '../../components/LiveStatus';
@@ -283,6 +284,50 @@ function BackupRow({
   );
 }
 
+/**
+ * What deleting the backups of each deleted installation frees (D-055): the files no
+ * other installation's backups use. Shown, not read out: a delete says what it freed.
+ */
+function DeletedSpace({
+  orphaned,
+  overview,
+}: {
+  orphaned: BackupInfo[];
+  overview: BackupOverview;
+}) {
+  const groups: { id: string; name: string; count: number; bytes: number }[] = [];
+  for (const backup of orphaned) {
+    const group = groups.find((g) => g.id === backup.instanceId);
+    if (group !== undefined) {
+      group.count += 1;
+      continue;
+    }
+    const bytes = overview.deletedBytes.find((d) => d.instanceId === backup.instanceId)?.bytes;
+    // One the core did not count (it changed since): no line rather than a wrong one.
+    if (bytes !== undefined) {
+      groups.push({ id: backup.instanceId, name: backup.instanceName, count: 1, bytes });
+    }
+  }
+  if (groups.length === 0) return null;
+  const counted = groups.reduce((sum, g) => sum + g.count, 0);
+  const together =
+    groups.length > 1 &&
+    counted === orphaned.length &&
+    overview.deletedBytes.length === groups.length;
+  // The size keeps its number and unit on one line.
+  const space = (count: number, bytes: number) =>
+    t.deletedSpace({ count, size: isolate(formatBytes(bytes).replace(/ /g, '\u00a0')) });
+  return (
+    <Facts>
+      {groups.map((g) => (
+        <Fact key={g.id} term={<bdi>{g.name}</bdi>}>
+          {space(g.count, g.bytes)}
+        </Fact>
+      ))}
+      {together && <Fact term={t.deletedAll}>{space(counted, overview.deletedTotalBytes)}</Fact>}
+    </Facts>
+  );
+}
 /**
  * Incremental backups of worlds and whole installations (D-047): back up now,
  * restore in place or as a copy, delete, see the space used, and bring back a
@@ -614,6 +659,7 @@ export function BackupsView({ snapshot }: { snapshot: AppSnapshot }) {
             (where === 'deleted' && (own || message !== null || error !== null))) && (
             <Panel title={t.deletedTitle} level={3} headingId={deletedHeadingId}>
               <p className={styles.hint}>{t.deletedHint}</p>
+              {overview !== null && <DeletedSpace orphaned={orphaned} overview={overview} />}
               {said('deleted')}
               {orphaned.length > 0 && (
                 <ul

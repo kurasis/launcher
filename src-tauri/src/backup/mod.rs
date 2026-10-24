@@ -43,6 +43,14 @@ pub struct InstanceWorlds {
     pub worlds: Vec<String>,
 }
 
+/// What deleting every backup of a deleted installation frees.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DeletedBytes {
+    pub instance_id: InstanceId,
+    pub bytes: u64,
+}
+
 /// Every backup, the worlds that can be backed up, and the space used.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -51,6 +59,11 @@ pub struct BackupOverview {
     pub worlds: Vec<InstanceWorlds>,
     /// Bytes all stored files take; shared files count once.
     pub store_bytes: u64,
+    /// Per deleted installation with backups, newest backup first: the bytes only
+    /// its backups use, which deleting them all frees (D-055).
+    pub deleted_bytes: Vec<DeletedBytes>,
+    /// The bytes only deleted installations' backups use, together.
+    pub deleted_total_bytes: u64,
 }
 
 /// Where a restore wrote to.
@@ -209,17 +222,31 @@ fn mib(bytes: u64) -> String {
 pub fn overview(state: &AppState) -> LauncherResult<BackupOverview> {
     let root = data_root(state)?;
     let store = Store::new(root.path());
+    let snapshots = store.list();
+    let live = state.instance_ids();
+    let gone = |id: InstanceId| !live.contains(&id);
+    let (each, deleted_total_bytes) = store::unshared_bytes(&snapshots, gone);
+    let mut deleted_bytes: Vec<DeletedBytes> = Vec::new();
+    for id in snapshots.iter().map(|s| s.info.instance_id) {
+        if gone(id) && !deleted_bytes.iter().any(|d| d.instance_id == id) {
+            deleted_bytes.push(DeletedBytes {
+                instance_id: id,
+                bytes: each.get(&id).copied().unwrap_or(0),
+            });
+        }
+    }
     Ok(BackupOverview {
-        backups: store.list().into_iter().map(|s| s.info).collect(),
-        worlds: state
-            .instance_ids()
-            .into_iter()
-            .map(|id| InstanceWorlds {
+        worlds: live
+            .iter()
+            .map(|&id| InstanceWorlds {
                 instance_id: id,
                 worlds: worlds(&root.game_dir(id)),
             })
             .collect(),
+        backups: snapshots.into_iter().map(|s| s.info).collect(),
         store_bytes: store.size(),
+        deleted_bytes,
+        deleted_total_bytes,
     })
 }
 

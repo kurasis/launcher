@@ -523,6 +523,54 @@ impl Store {
     }
 }
 
+/// What deleting snapshots frees, from the stored files they share: per
+/// installation, the bytes only that installation's snapshots use; and together,
+/// the bytes only the snapshots of installations in `group` use. A file used by
+/// another installation's snapshot counts for neither. Sizes are the manifests'
+/// (a restore checks every object against them), added without overflowing.
+pub fn unshared_bytes(
+    snapshots: &[Snapshot],
+    group: impl Fn(InstanceId) -> bool,
+) -> (HashMap<InstanceId, u64>, u64) {
+    struct Use {
+        size: u64,
+        /// The one installation using it; `None` once a second one does.
+        only: Option<InstanceId>,
+        in_group: bool,
+    }
+    let mut uses: HashMap<&str, Use> = HashMap::new();
+    for snapshot in snapshots {
+        let id = snapshot.info.instance_id;
+        let in_group = group(id);
+        for file in &snapshot.files {
+            uses.entry(file.sha256.as_str())
+                .and_modify(|used| {
+                    if used.only != Some(id) {
+                        used.only = None;
+                    }
+                    used.in_group &= in_group;
+                })
+                .or_insert(Use {
+                    size: file.size,
+                    only: Some(id),
+                    in_group,
+                });
+        }
+    }
+    let mut each: HashMap<InstanceId, u64> = HashMap::new();
+    let mut together = 0_u64;
+    for used in uses.into_values() {
+        if let Some(id) = used.only {
+            let bytes = each.entry(id).or_default();
+            *bytes = bytes.saturating_add(used.size);
+        }
+        if used.in_group {
+            together = together.saturating_add(used.size);
+        }
+    }
+    (each, together)
+}
+
 fn not_found() -> LauncherError {
     LauncherError::new(ErrorCode::InvalidInput, "This backup no longer exists.")
 }
@@ -554,6 +602,96 @@ mod tests {
         let file = dir.join(path);
         fs::create_dir_all(file.parent().unwrap()).unwrap();
         fs::write(file, text).unwrap();
+    }
+
+    #[test]
+    fn unshared_bytes_are_what_deleting_snapshots_frees() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = Store::new(&dir.path().join("data"));
+        let (a, b, c) = (
+            InstanceId::generate(),
+            InstanceId::generate(),
+            InstanceId::generate(),
+        );
+        let make = |id: InstanceId, folder: &str, files: &[(&str, &str)]| {
+            let folder = dir.path().join(folder);
+            for (path, text) in files {
+                write(&folder, path, text);
+            }
+            let mut o = origin(Scope::Installation, Reason::Manual);
+            o.instance_id = id;
+            store.create(&folder, o, None).unwrap();
+        };
+        // A uses its own file twice and changes it; the jar is A's and B's; "ccccc"
+        // is B's and C's.
+        make(
+            a,
+            "a1",
+            &[
+                ("mods/shared.jar", "mod"),
+                ("a.dat", "aaaa"),
+                ("copy.dat", "aaaa"),
+            ],
+        );
+        make(a, "a2", &[("mods/shared.jar", "mod"), ("a.dat", "aaaaaa")]);
+        make(
+            b,
+            "b",
+            &[
+                ("mods/shared.jar", "mod"),
+                ("b.dat", "bb"),
+                ("bc.dat", "ccccc"),
+            ],
+        );
+        make(c, "c", &[("bc.dat", "ccccc"), ("c.dat", "c")]);
+        let snapshots = store.list();
+        let (each, together) = unshared_bytes(&snapshots, |id| id == a || id == c);
+        assert_eq!(each.get(&a), Some(&(4 + 6)), "the same file once");
+        assert_eq!(each.get(&b), Some(&2));
+        assert_eq!(each.get(&c), Some(&1));
+        assert_eq!(together, 4 + 6 + 1, "files B also uses stay");
+        // Together can be more than each: what B and C share counts for the pair.
+        assert_eq!(unshared_bytes(&snapshots, |id| id != a).1, 2 + 5 + 1);
+
+        // Deleting all of A's snapshots frees what was said, and the jar is then B's.
+        for s in snapshots.iter().filter(|s| s.info.instance_id == a) {
+            store.delete(&s.info.id).unwrap();
+        }
+        assert_eq!(store.collect(), 4 + 6);
+        let snapshots = store.list();
+        let (each, together) = unshared_bytes(&snapshots, |_| true);
+        assert_eq!(each.get(&b), Some(&(3 + 2)));
+        assert_eq!(each.get(&a), None);
+        assert_eq!(together, 3 + 2 + 5 + 1);
+        for s in &snapshots {
+            store.delete(&s.info.id).unwrap();
+        }
+        assert_eq!(store.collect(), together);
+    }
+
+    #[test]
+    fn unshared_bytes_never_overflow() {
+        assert_eq!(unshared_bytes(&[], |_| true), (HashMap::new(), 0));
+        let dir = tempfile::tempdir().unwrap();
+        let store = Store::new(&dir.path().join("data"));
+        let world = dir.path().join("World");
+        write(&world, "level.dat", "level");
+        let (mut snapshot, _) = store
+            .create(&world, origin(Scope::Installation, Reason::Manual), None)
+            .unwrap();
+        // An edited manifest: sizes no disk holds.
+        snapshot.files = ["a", "b"]
+            .map(|c| FileEntry {
+                path: c.into(),
+                size: u64::MAX,
+                sha256: c.repeat(64),
+                modified_ms: 0,
+            })
+            .into();
+        let id = snapshot.info.instance_id;
+        let (each, together) = unshared_bytes(&[snapshot], |_| true);
+        assert_eq!(each.get(&id), Some(&u64::MAX));
+        assert_eq!(together, u64::MAX);
     }
 
     #[test]
