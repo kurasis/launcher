@@ -2265,6 +2265,44 @@ async fn pack_version(t: &T) -> String {
 }
 
 #[tokio::test]
+async fn the_owner_reads_every_pack_before_anyone_installs_it() {
+    let t = setup();
+    let sodium = b"jar of sodium in a pack".to_vec();
+    let sodium_url = format!("https://cdn.modrinth.com/data/{SODIUM}/versions/v9/sodium.jar");
+    t.sites.put(&sodium_url, ok(sodium.clone()));
+    let index = json!({
+        "formatVersion": 1, "game": "minecraft", "versionId": "1.0", "name": "Pack",
+        "dependencies": { "minecraft": "1.21.1", "fabric-loader": "0.16.5" },
+        "files": [pack_entry("mods/sodium.jar", &sodium_url, &sodium, "required")],
+    });
+    let archive = mrpack(&[("modrinth.index.json", index.to_string().as_bytes())]);
+    modpack_site(&t.sites, &archive);
+    let version = pack_version(&t).await;
+    let purged = Purged::default();
+    let owner = owner(&t, &purged);
+    assert_eq!(owner.packs(&[]).unwrap(), ["not read 1"]);
+    assert!(owner.packs(&["junk".into()]).is_err());
+    assert_eq!(
+        owner.packs(&["read".into()]).unwrap(),
+        ["not read 1", "queued 1"]
+    );
+    // Asked again while it waits: queued once.
+    assert_eq!(
+        owner.packs(&["read".into()]).unwrap(),
+        ["queued 1", "queued 0"]
+    );
+    t.drain().await;
+    let (_, pack) = t.get(&format!("/v1/versions/{version}/pack")).await;
+    assert_eq!(pack["state"], "ready", "{pack}");
+    assert_eq!(t.sites.asked(&sodium_url), 1);
+    assert_eq!(owner.packs(&[]).unwrap(), ["done 1"]);
+    // Read already: nothing is fetched again.
+    owner.packs(&["read".into()]).unwrap();
+    t.drain().await;
+    assert_eq!(t.sites.asked(&sodium_url), 1);
+}
+
+#[tokio::test]
 async fn a_modpack_is_read_and_all_its_files_are_kept_when_asked() {
     let t = setup();
     let sodium = b"jar of sodium in a pack".to_vec();
@@ -2955,11 +2993,17 @@ async fn a_curseforge_modpack_has_its_files_found_kept_and_placed() {
         "https://media.forgecdn.net/avatars/9/0/shiny.png",
         ok(png(64, 64)),
     );
+    // The pack chose an older file than the newest, which alone is fetched.
+    let newer = mrpack(&[("shaders/final.fsh", b"void main() { }")]);
+    cf_download(&t.sites, 900, 9010, "shader-2.zip", &newer);
     t.sites.json(
         &curseforge::files_url(900, 0),
         json!({
-            "data": [cf_file(900, 9000, "shader.zip", shader.len(), 1, "2024-01-01T00:00:00Z")],
-            "pagination": { "index": 0, "pageSize": 50, "totalCount": 1 },
+            "data": [
+                cf_file(900, 9010, "shader-2.zip", newer.len(), 1, "2024-02-01T00:00:00Z"),
+                cf_file(900, 9000, "shader.zip", shader.len(), 1, "2024-01-01T00:00:00Z"),
+            ],
+            "pagination": { "index": 0, "pageSize": 50, "totalCount": 2 },
         }),
     );
     // The resource pack's number leads elsewhere: it stays without a page.
@@ -2980,13 +3024,38 @@ async fn a_curseforge_modpack_has_its_files_found_kept_and_placed() {
     assert_eq!(status, StatusCode::OK, "{page}");
     assert_eq!(page["title"], "Shiny Shader");
     assert!(page["iconThumb"].is_string(), "{page}");
-    let (_, pack) = t.get(&format!("/v1/versions/{version}/pack")).await;
-    assert_eq!(pack["files"][1]["title"], "Shiny Shader", "{pack}");
-    assert!(pack["files"][2]["projectId"].is_null());
+    // The site gave no hashes for the older file: the pack's copy, from the
+    // same address, gives them, and is not fetched again.
+    let (_, versions) = t.get("/v1/projects/shiny/versions").await;
+    assert_eq!(versions["versions"][1]["saved"], "none", "{versions}");
     // Asked once: nothing more to do.
     assert_eq!(import::pack_projects(&t.app).await.unwrap(), 0);
     assert_eq!(t.sites.asked(&curseforge::number_url(900)), 1);
     assert_eq!(t.sites.asked(&curseforge::number_url(901)), 1);
+    let (_, pack) = t.get(&format!("/v1/versions/{version}/pack")).await;
+    assert_eq!(pack["files"][1]["title"], "Shiny Shader", "{pack}");
+    assert_eq!(pack["files"][1]["versionNumber"], "shader.zip", "{pack}");
+    assert!(pack["files"][2]["projectId"].is_null());
+    let (_, versions) = t.get("/v1/projects/shiny/versions").await;
+    assert_eq!(versions["versions"][1]["saved"], "all", "{versions}");
+    assert_eq!(
+        versions["versions"][1]["files"][0]["sha256"],
+        shader_sha.as_str()
+    );
+    assert_eq!(
+        t.sites.asked(&curseforge::download_url(900, 9000)),
+        1,
+        "fetched once, for the pack"
+    );
+    let (_, found) = t
+        .call(
+            None,
+            "POST",
+            "/v1/lookup",
+            json!({ "hashes": [shader_sha1] }),
+        )
+        .await;
+    assert_eq!(found["found"][0]["title"], "Shiny Shader", "{found}");
 }
 
 #[test]

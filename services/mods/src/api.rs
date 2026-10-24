@@ -700,7 +700,7 @@ async fn fetch_version(
 /// (`none`, `working`, `ready` or `failed` with an `error`). `None` when the
 /// version is not a Modrinth modpack.
 fn pack_answer(app: &App, id: &str) -> Result<Option<(Value, bool)>, String> {
-    let Some(archive) = import::pack_archive(app, id)? else {
+    let Some(archive) = import::pack_archive(&app.store, id)? else {
         return Ok(None);
     };
     let read = app.store.pack_json(id, &app.urls)?;
@@ -780,7 +780,7 @@ async fn fetch_pack(
     ) {
         return refuse(StatusCode::TOO_MANY_REQUESTS, "too_many");
     }
-    if let Err(e) = import::queue_pack(&app, id) {
+    if let Err(e) = import::queue_pack(&app.store, id, import::now()) {
         return failed(&e);
     }
     match pack_answer(&app, id) {

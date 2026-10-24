@@ -123,6 +123,7 @@ CREATE TABLE IF NOT EXISTS version_file (
 );
 CREATE INDEX IF NOT EXISTS version_file_sha1 ON version_file(sha1);
 CREATE INDEX IF NOT EXISTS version_file_sha256 ON version_file(sha256);
+CREATE INDEX IF NOT EXISTS version_file_origin ON version_file(origin_url);
 CREATE TABLE IF NOT EXISTS dependency (
     version_id TEXT NOT NULL REFERENCES version(id),
     ord INTEGER NOT NULL,
@@ -3793,6 +3794,50 @@ impl Store {
         .map_err(sql)?
         .collect::<std::result::Result<_, _>>()
         .map_err(sql)
+    }
+
+    /// Catalog versions' files that packs brought here already, from the
+    /// same address: a CurseForge file the site gives no hashes for is known
+    /// by its pack copy's (D-066). Up to `limit`, with that copy's SHA-256.
+    pub fn kept_in_packs(&self, limit: usize) -> Result<Vec<(String, i64, String)>> {
+        let db = self.db();
+        let mut q = db
+            .prepare(
+                "SELECT f.version_id, f.ord, p.sha256 FROM pack_file p
+                 JOIN blob b ON b.sha256 = p.sha256
+                 JOIN version_file f ON f.origin_url = p.origin_url
+                 WHERE p.sha256 IS NOT NULL AND b.state = 'stored' AND f.sha256 IS NULL
+                   AND (f.size = 0 OR f.size = b.size)
+                 LIMIT ?1",
+            )
+            .map_err(sql)?;
+        q.query_map([limit as i64], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))
+            .map_err(sql)?
+            .collect::<std::result::Result<_, _>>()
+            .map_err(sql)
+    }
+
+    /// Each shown modpack's newest version still offered, with its project.
+    pub fn newest_pack_versions(&self) -> Result<Vec<(String, String)>> {
+        let db = self.db();
+        let mut q = db
+            .prepare(
+                "SELECT p.id, (SELECT v.id FROM version v
+                   WHERE v.project_id = p.id AND v.gone_at IS NULL
+                   ORDER BY v.published DESC LIMIT 1)
+                 FROM project p WHERE p.kind = 'modpack' AND p.status = 'ready'
+                 ORDER BY p.id",
+            )
+            .map_err(sql)?;
+        let rows: Vec<(String, Option<String>)> = q
+            .query_map([], |r| Ok((r.get(0)?, r.get(1)?)))
+            .map_err(sql)?
+            .collect::<std::result::Result<_, _>>()
+            .map_err(sql)?;
+        Ok(rows
+            .into_iter()
+            .filter_map(|(p, v)| v.map(|v| (p, v)))
+            .collect())
     }
 
     pub fn pack_file_kept(&self, version: &str, ord: i64, sha256: &str) -> Result<()> {

@@ -2553,6 +2553,18 @@ skins-mod <channel>` there only checks the signature against the public key and
   The bound for an answer is 64 MB since (was 16), and the daily health check
   (`lapi-mods health`, Mods health workflow) counts jobs failed as too big in the last
   day: one is a problem, so the run fails and GitHub mails it.
+- **A CurseForge pack's older files (2026-10-24).** RLCraft's 2.9.3 pack had 29 of 187
+  files without a card, although their projects were in the catalog: the pack chose
+  older files than the newest, CurseForge gives no hashes for a file, and only the
+  newest ones are fetched, so the pack's copies (by SHA-1) matched no version. A
+  version's file now takes the hashes of a pack's copy from the same address (the
+  site's download link names project and file), once a minute with the packs'
+  projects, and counts as kept: it is not fetched again, and the lookup finds it.
+  On Ai's word the same day, every modpack's newest version is read before anyone
+  installs it (owner command `packs read`, workflow task `packs-read`; `packs` counts how
+  far it went; one due every five minutes, so players' asks do not wait behind them), so
+  all of their files are kept and have cards: about 25 to 30 GB for
+  the 97 packs not read then.
 - **Name search.** A name asks both sources: Modrinth's search API and CurseForge's
   search page (its API search is refused). The page's hits are read from the App Router
   stream (objects with a numeric ID, a slug, a name and a class we keep, Minecraft
