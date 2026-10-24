@@ -86,8 +86,10 @@ pub fn page_url(class: &str, slug: &str) -> String {
     format!("{SITE}/minecraft/{class}/{slug}")
 }
 
+/// A page of a project's files. The site leaves alphas out unless told, and
+/// packs choose them too (RLCraft: Inventory Tweaks 1.64+dev.151).
 pub fn files_url(project: u64, page: usize) -> String {
-    format!("{API}/{project}/files?pageIndex={page}&pageSize={PAGE_SIZE}")
+    format!("{API}/{project}/files?pageIndex={page}&pageSize={PAGE_SIZE}&removeAlphas=false")
 }
 
 pub fn file_url(project: u64, file: u64) -> String {

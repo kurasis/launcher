@@ -2559,7 +2559,10 @@ skins-mod <channel>` there only checks the signature against the public key and
   newest ones are fetched, so the pack's copies (by SHA-1) matched no version. A
   version's file now takes the hashes of a pack's copy from the same address (the
   site's download link names project and file), once a minute with the packs'
-  projects, and counts as kept: it is not fetched again, and the lookup finds it.
+  projects, and counts as kept: it is not fetched again, and the lookup finds it. The
+  site's list of a project's files leaves alphas out unless asked (`removeAlphas=false`),
+  and packs choose them too (RLCraft: Inventory Tweaks 1.64+dev.151, a Wolf Armor alpha),
+  so the catalog asks for them since.
   On Ai's word the same day, every modpack's newest version is read before anyone
   installs it (owner command `packs read`, workflow task `packs-read`; `packs` counts how
   far it went; one due every five minutes, so players' asks do not wait behind them), so

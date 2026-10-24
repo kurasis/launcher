@@ -3059,6 +3059,14 @@ async fn a_curseforge_modpack_has_its_files_found_kept_and_placed() {
 }
 
 #[test]
+fn curseforge_lists_carry_alphas_that_packs_choose() {
+    // The site leaves alphas out of a project's files unless told.
+    assert!(
+        curseforge::files_url(223_094, 2).ends_with("pageIndex=2&pageSize=50&removeAlphas=false")
+    );
+}
+
+#[test]
 fn curseforge_manifests_are_read_with_care() {
     let base = json!({
         "minecraft": { "version": "1.21.1",
