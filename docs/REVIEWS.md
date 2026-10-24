@@ -26,7 +26,7 @@ then:
 r() { sudo -u lapi-reviews /home/www/lapi/reviews/current/lapi-reviews "$@"; }
 
 r overview --days 7          # numbers by kind, category and status
-r list                       # newest first, suspected spam left out
+r list                       # newest first, suspected spam left out; the subject or the message's start
 r list --status new          # new|read|answered|closed|spam
 r list --kind bug --category launch --days 30 --limit 100
 r list --spam                # with the suspected spam

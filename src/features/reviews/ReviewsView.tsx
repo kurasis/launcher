@@ -44,6 +44,7 @@ const t = strings.reviews;
 const KINDS = tree.kinds as ReviewKind[];
 const MIN_MESSAGE = 20;
 const MAX_MESSAGE = 5000;
+const MAX_SUBJECT = 80;
 const MAX_IMAGES = 5;
 const MAX_TEXTS = 5;
 /** A picture file is read up to this size; it is scaled down before sending. */
@@ -72,6 +73,7 @@ interface SavedDraft {
   kind: ReviewKind;
   category: string;
   subcategory: string;
+  subject?: string;
   message: string;
 }
 
@@ -105,11 +107,26 @@ function subLabel(sub: string): string {
   return (t.subcategories as Record<string, string | undefined>)[sub] ?? sub;
 }
 
-/** What a review is about, as briefly as its place says it ("Crashes"). */
+/**
+ * What a review is about: the subject the player wrote, or as briefly as its
+ * place says it ("Crashes").
+ */
 function subjectOf(review: SentReview): string {
+  if (review.subject !== null && review.subject !== '') return review.subject;
   return review.subcategory === '' || review.subcategory === 'other'
     ? categoryLabel(review.category)
     : subLabel(review.subcategory);
+}
+
+/** Kind, category and subcategory: "A problem · Starting the game · Crashes". */
+function placeOf(review: SentReview): string {
+  return [
+    t.kinds[review.kind],
+    categoryLabel(review.category),
+    ...(review.subcategory !== 'other' && review.subcategory !== ''
+      ? [subLabel(review.subcategory)]
+      : []),
+  ].join(' · ');
 }
 
 /** The day a review was sent or answered, inside a sentence. */
@@ -352,6 +369,7 @@ function ReviewForm({ snapshot, prefill, onSent, onShowMine }: ReviewFormProps) 
   const [subcategory, setSubcategory] = useState(
     prefill?.subcategory ?? saved?.subcategory ?? subsOf(prefill?.category ?? 'launch')[0] ?? '',
   );
+  const [subject, setSubject] = useState(saved?.subject ?? '');
   const [message, setMessage] = useState(saved?.message ?? '');
   const [rating, setRating] = useState<number | null>(null);
   const instances = snapshot.instances;
@@ -384,8 +402,12 @@ function ReviewForm({ snapshot, prefill, onSent, onShowMine }: ReviewFormProps) 
   const [dragOver, setDragOver] = useState(false);
 
   useEffect(() => {
-    saveDraft(message.trim() === '' ? null : { kind, category, subcategory, message });
-  }, [kind, category, subcategory, message]);
+    saveDraft(
+      message.trim() === '' && subject.trim() === ''
+        ? null
+        : { kind, category, subcategory, subject, message },
+    );
+  }, [kind, category, subcategory, subject, message]);
 
   // The logs: found again when the installation changes.
   useEffect(() => {
@@ -562,6 +584,7 @@ function ReviewForm({ snapshot, prefill, onSent, onShowMine }: ReviewFormProps) 
         kind,
         category,
         subcategory: subcategory === '' ? null : subcategory,
+        subject: subject.trim() === '' ? null : subject.trim(),
         message: message.trim(),
         rating: kind === 'impression' ? rating : null,
         linkAccount: signedIn && linkAccount,
@@ -717,6 +740,23 @@ function ReviewForm({ snapshot, prefill, onSent, onShowMine }: ReviewFormProps) 
           </div>
         </fieldset>
       )}
+
+      <Field label={t.subject} hint={t.subjectHint}>
+        {(field) => (
+          <input
+            {...field}
+            type="text"
+            className={forms.input}
+            value={subject}
+            maxLength={MAX_SUBJECT}
+            disabled={sending}
+            placeholder={kind === 'bug' ? t.subjectBugExample : t.subjectExample}
+            onChange={(event) => {
+              setSubject(event.target.value);
+            }}
+          />
+        )}
+      </Field>
 
       <Field
         label={t.message}
@@ -1049,7 +1089,9 @@ function RecentReview({ review, onOpen }: { review: SentReview; onOpen: () => vo
   return (
     <li className={styles.recentItem}>
       <span className={styles.recentName}>
-        <span id={titleId}>{subjectOf(review)}</span>
+        <span id={titleId} dir="auto">
+          {subjectOf(review)}
+        </span>
         <Tag tone={TAG_TONES[review.status]}>{t.statuses[review.status]}</Tag>
         {fresh && <Tag tone="warning">{t.fresh}</Tag>}
       </span>
@@ -1277,11 +1319,8 @@ function MyReview({
   return (
     <li className={styles.item} data-review={review.id}>
       <div className={styles.itemHead}>
-        <h3 id={titleId} className={styles.itemTitle} tabIndex={-1}>
-          {t.kinds[review.kind]} · {categoryLabel(review.category)}
-          {review.subcategory !== 'other' && review.subcategory !== ''
-            ? ` · ${subLabel(review.subcategory)}`
-            : ''}
+        <h3 id={titleId} className={styles.itemTitle} tabIndex={-1} dir="auto">
+          {review.subject ?? placeOf(review)}
         </h3>
         <Tag tone={TAG_TONES[review.status]}>{t.statuses[review.status]}</Tag>
         {fresh && <Tag tone="warning">{t.fresh}</Tag>}
@@ -1301,6 +1340,7 @@ function MyReview({
         </Button>
       </div>
       <p id={numberId} className={styles.itemMeta}>
+        {review.subject !== null && `${placeOf(review)} · `}
         {number}
       </p>
       <p className={styles.excerpt} dir="auto">

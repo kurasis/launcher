@@ -1047,6 +1047,10 @@
       "noInstallation": "لا شيء",
       "rating": "تقييمك",
       "stars": "{count, plural, zero {لا نجوم} one {نجمة واحدة} two {نجمتان} few {# نجوم} many {# نجمة} other {# نجمة}}",
+      "subject": "الموضوع (اختياري)",
+      "subjectHint": "بضع كلمات لتجد الرأي لاحقًا بين آرائك.",
+      "subjectBugExample": "مثلًا: تعطل مع الظلال",
+      "subjectExample": "مثلًا: ترتيب التعديلات حسب التاريخ",
       "message": "الرسالة",
       "messageBugHint": "ماذا فعلت، وماذا حدث، وماذا توقعت؟",
       "messageHint": "اكتب بأي لغة.",
@@ -3405,6 +3409,7 @@
     "{mod} needs {dependency} {version}, and the world has {actual}. Take another release of {mod} or remove it.": "يحتاج {mod} إلى {dependency} {version}، والعالم فيه {actual}. اختر إصدارًا آخر من {mod} أو أزله.",
     "{mod} needs {dependency}, which is not in the world. Add it to the installation or remove {mod}, then update the world's mods.": "يحتاج {mod} إلى {dependency}، وهو غير موجود في العالم. أضفه إلى التثبيت أو أزل {mod}، ثم حدّث تعديلات العالم.",
     "{mod} stopped the world server while it started. Take another release of {mod} or remove it.": "أوقف {mod} خادم العالم أثناء بدء تشغيله. اختر إصدارًا آخر من {mod} أو أزله.",
-    "The list of other Minecraft versions was refused.": "رُفضت قائمة إصدارات Minecraft الأخرى."
+    "The list of other Minecraft versions was refused.": "رُفضت قائمة إصدارات Minecraft الأخرى.",
+    "The subject is too long: 80 characters at most.": "الموضوع طويل جدًا: 80 حرفًا على الأكثر."
   }
 }

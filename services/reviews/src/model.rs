@@ -26,6 +26,8 @@ struct Category {
 
 pub const MIN_MESSAGE_CHARS: usize = 20;
 pub const MAX_MESSAGE_CHARS: usize = 5000;
+/// A short subject the player gives the review ("Crash with shaders").
+pub const MAX_SUBJECT_CHARS: usize = 80;
 pub const MAX_IMAGES: usize = 5;
 /// Files the player picked plus the logs the launcher found.
 pub const MAX_TEXTS: usize = 12;
@@ -63,6 +65,8 @@ pub struct Incoming {
     pub category: String,
     #[serde(default)]
     pub subcategory: Option<String>,
+    #[serde(default)]
+    pub subject: Option<String>,
     pub message: String,
     #[serde(default)]
     pub rating: Option<u8>,
@@ -99,6 +103,8 @@ pub struct Checked {
     pub kind: String,
     pub category: String,
     pub subcategory: String,
+    /// One line, or none when the player left it empty.
+    pub subject: Option<String>,
     pub message: String,
     pub rating: Option<u8>,
     pub launcher_version: String,
@@ -125,6 +131,27 @@ pub fn clean(text: &str) -> String {
             }
         })
         .collect()
+}
+
+/// The subject as kept: cleaned, on one line, trimmed; an empty one is none.
+pub fn subject(text: Option<&str>) -> Result<Option<String>, &'static str> {
+    let Some(text) = text else {
+        return Ok(None);
+    };
+    let one_line: String = clean(text)
+        .chars()
+        .map(|c| if c == '\n' || c == '\t' { ' ' } else { c })
+        .collect();
+    let one_line = one_line
+        .split(' ')
+        .filter(|w| !w.is_empty())
+        .collect::<Vec<_>>()
+        .join(" ");
+    match one_line.chars().count() {
+        0 => Ok(None),
+        n if n > MAX_SUBJECT_CHARS => Err("subject"),
+        _ => Ok(Some(one_line)),
+    }
 }
 
 /// A short field of letters, digits and a few signs.
@@ -203,6 +230,7 @@ impl Incoming {
         }
         let (category, subcategory) =
             place(&self.kind, &self.category, self.subcategory.as_deref()).ok_or("kind")?;
+        let subject = subject(self.subject.as_deref())?;
         let message = clean(self.message.trim());
         let chars = message.chars().count();
         if !(MIN_MESSAGE_CHARS..=MAX_MESSAGE_CHARS).contains(&chars) {
@@ -278,6 +306,7 @@ impl Incoming {
             kind: self.kind,
             category,
             subcategory,
+            subject,
             message,
             rating,
             launcher_version: self.launcher_version,

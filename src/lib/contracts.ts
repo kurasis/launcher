@@ -1355,6 +1355,8 @@ export interface ReviewDraft {
   kind: ReviewKind;
   category: string;
   subcategory: string | null;
+  /** Optional, one line of at most 80 characters ("Crash with shaders"). */
+  subject: string | null;
   message: string;
   rating: number | null;
   linkAccount: boolean;
@@ -1372,6 +1374,8 @@ export interface SentReview {
   kind: ReviewKind;
   category: string;
   subcategory: string;
+  /** What the player called it, if they did. */
+  subject: string | null;
   excerpt: string;
   account: boolean;
   status: ReviewStatus;

@@ -1120,6 +1120,10 @@ export type Messages = {
     readonly noInstallation: string;
     readonly rating: string;
     readonly stars: (values: { count: number }) => string;
+    readonly subject: string;
+    readonly subjectHint: string;
+    readonly subjectBugExample: string;
+    readonly subjectExample: string;
     readonly message: string;
     readonly messageBugHint: string;
     readonly messageHint: string;

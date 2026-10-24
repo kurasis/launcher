@@ -27,6 +27,8 @@ use crate::storage::paths::DataRoot;
 pub const BASE: &str = "https://reviews.lapi.sh";
 pub const MIN_MESSAGE_CHARS: usize = 20;
 pub const MAX_MESSAGE_CHARS: usize = 5000;
+/// A short subject the player gives the review ("Crash with shaders").
+pub const MAX_SUBJECT_CHARS: usize = 80;
 const MAX_IMAGES: usize = 5;
 const MAX_TEXTS: usize = 12;
 /// The newest part of a text file that is sent.
@@ -94,6 +96,9 @@ pub struct Draft {
     pub category: String,
     #[serde(default)]
     pub subcategory: Option<String>,
+    /// Optional; one line of at most 80 characters.
+    #[serde(default)]
+    pub subject: Option<String>,
     pub message: String,
     #[serde(default)]
     pub rating: Option<u8>,
@@ -136,6 +141,9 @@ pub struct Sent {
     pub kind: String,
     pub category: String,
     pub subcategory: String,
+    /// What the player called the review, if they did.
+    #[serde(default)]
+    pub subject: Option<String>,
     /// The start of the message, to recognise it.
     pub excerpt: String,
     pub account: bool,
@@ -324,6 +332,20 @@ pub fn solve(challenge: &str, bits: u8) -> String {
         }
         n += 1;
     }
+}
+
+/// One line of text as the service keeps it: no control or reordering
+/// characters, spaces collapsed; none when nothing is left.
+fn one_line(text: &str) -> Option<String> {
+    let words: Vec<&str> = text
+        .split(|c: char| {
+            c.is_control()
+                || c.is_whitespace()
+                || matches!(c, '\u{202A}'..='\u{202E}' | '\u{2066}'..='\u{2069}')
+        })
+        .filter(|w| !w.is_empty())
+        .collect();
+    (!words.is_empty()).then(|| words.join(" "))
 }
 
 /// A file name as the service keeps it, if it names a text file it takes.
@@ -576,6 +598,15 @@ impl Reviews {
                 "The message is too long: 5000 characters at most.",
             ));
         }
+        let subject = draft.subject.as_deref().and_then(one_line);
+        if subject
+            .as_deref()
+            .is_some_and(|s| s.chars().count() > MAX_SUBJECT_CHARS)
+        {
+            return Err(LauncherError::invalid_input(
+                "The subject is too long: 80 characters at most.",
+            ));
+        }
         let plain = |s: &str, max: usize| {
             !s.is_empty()
                 && s.len() <= max
@@ -631,6 +662,7 @@ impl Reviews {
             "kind": draft.kind,
             "category": draft.category,
             "subcategory": draft.subcategory,
+            "subject": subject,
             "message": message,
             "rating": if draft.kind == "impression" { draft.rating.filter(|r| (1..=5).contains(r)) } else { None },
             "launcherVersion": state.app_version(),
@@ -721,6 +753,7 @@ impl Reviews {
                         kind: text("kind"),
                         category: text("category"),
                         subcategory: text("subcategory"),
+                        subject: body["subject"].as_str().map(str::to_owned),
                         excerpt: text("message").chars().take(120).collect(),
                         account: pending.link_account,
                         status: "sent".to_owned(),

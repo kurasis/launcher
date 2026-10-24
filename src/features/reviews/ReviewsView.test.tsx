@@ -38,6 +38,7 @@ function review(id: number, more: Partial<SentReview> = {}): SentReview {
     kind: 'bug',
     category: 'launch',
     subcategory: 'crashes',
+    subject: null,
     excerpt: `Review number ${String(id)}`,
     account: false,
     status: 'sent',
@@ -75,6 +76,9 @@ describe('ReviewsView', () => {
     expect(screen.getByText(/11 more characters needed/)).toBeVisible();
 
     fireEvent.change(screen.getByLabelText('Message'), { target: { value: `  ${MESSAGE}  ` } });
+    fireEvent.change(screen.getByLabelText('Subject (optional)'), {
+      target: { value: '  Mods clash with Sodium ' },
+    });
     fireEvent.change(screen.getByLabelText('About'), { target: { value: 'mods' } });
     expect(screen.getByLabelText('What exactly')).toHaveValue('catalog');
     fireEvent.change(screen.getByLabelText('What exactly'), { target: { value: 'conflict' } });
@@ -87,6 +91,7 @@ describe('ReviewsView', () => {
         kind: 'bug',
         category: 'mods',
         subcategory: 'conflict',
+        subject: 'Mods clash with Sodium',
         message: MESSAGE,
         rating: null,
         linkAccount: false,
@@ -178,6 +183,7 @@ describe('ReviewsView', () => {
           kind: 'bug',
           category: 'launch',
           subcategory: 'crashes',
+          subject: 'Crash with shaders',
           excerpt: 'The game closes…',
           account: false,
           status: 'answered',
@@ -195,6 +201,10 @@ describe('ReviewsView', () => {
     fireEvent.click(await screen.findByRole('tab', { name: 'My reviews (1 new answer)' }));
 
     expect(await screen.findByText('Fixed in 0.9.2')).toBeVisible();
+    expect(screen.getByRole('heading', { name: 'Crash with shaders' })).toBeVisible();
+    expect(
+      screen.getByText(/^A problem · Starting the game · The game closes or crashes · /),
+    ).toBeVisible();
     expect(screen.getByText('Answered')).toBeVisible();
     expect(screen.getByText('1 review waits to be sent.')).toBeVisible();
     await waitFor(() => {
@@ -215,7 +225,11 @@ describe('ReviewsView', () => {
 
 describe('ReviewsView in concept A', () => {
   it('lists the latest reviews beside the form, without reading their answers', async () => {
-    const reviews = [ANSWERED, ...[11, 10, 9, 8, 7].map((id) => review(id))];
+    const reviews = [
+      ANSWERED,
+      review(11, { subject: 'Crash with shaders' }),
+      ...[10, 9, 8, 7].map((id) => review(id)),
+    ];
     const calls = mock({
       reviews_mine: { reviews, unseen: 1, waiting: 1 },
       reviews_logs: logs,
@@ -232,6 +246,8 @@ describe('ReviewsView in concept A', () => {
     expect(open[0]).toHaveAccessibleDescription(
       /^The game closes or crashes Review 12 · \u2068.+\u2069$/,
     );
+    // A subject the player wrote names the review.
+    expect(open[1]).toHaveAccessibleDescription(/^Crash with shaders Review 11 · /);
     expect(within(recent).getByText('Answered')).toBeVisible();
     expect(within(recent).getByText('New')).toBeVisible();
     expect(within(recent).getByText('Answer: “\u2068Fixed in 0.9.2\u2069”')).toBeVisible();
