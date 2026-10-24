@@ -1505,7 +1505,10 @@
       },
       "windowTitle": "Консоль лаунчера",
       "logLabel": "Вывод лаунчера и игры",
-      "keeps": "Консоль хранит последние {count, plural, one {# строку} few {# строки} many {# строк} other {# строки}}"
+      "keeps": "Консоль хранит последние {count, plural, one {# строку} few {# строки} many {# строк} other {# строки}}",
+      "gameStarting": "Игра запускается",
+      "gameRunning": "Игра идёт",
+      "gameRunningFor": "Игра идёт: {duration}"
     },
     "diagnostics": {
       "recentTitle": "Последние операции",

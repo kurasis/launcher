@@ -1505,7 +1505,10 @@
       },
       "windowTitle": "Launcher console",
       "logLabel": "Launcher and game output",
-      "keeps": "The console keeps the newest {count, plural, one {# line} other {# lines}}"
+      "keeps": "The console keeps the newest {count, plural, one {# line} other {# lines}}",
+      "gameStarting": "Game starting",
+      "gameRunning": "Game running",
+      "gameRunningFor": "Game running for {duration}"
     },
     "diagnostics": {
       "recentTitle": "Recent operations",

@@ -20,7 +20,7 @@ use crate::lifecycle::{LifecycleController, RunHandles};
 use crate::net::PublicClient;
 use crate::state::AppState;
 use crate::state::dto::{
-    AddNoTokenProfilePayload, AppSnapshot, CheckJavaPayload, CreateInstancePayload,
+    AddNoTokenProfilePayload, AppSnapshot, CheckJavaPayload, ConsolePage, CreateInstancePayload,
     DeleteInstancePayload, InstanceSummary, JavaChoice, MutationRequest, NoTokenProfileView,
     ProfileIdPayload, RenameInstancePayload, SetDefaultProfilePayload, SetInstanceJavaPayload,
     SetInstanceLoaderPayload, SetInstanceNotesPayload, SetInstanceProfilePayload, SettingsPatch,
@@ -472,10 +472,11 @@ pub fn open_console<R: Runtime>(app: AppHandle<R>) {
     app.state::<LifecycleController>().show_console_window(&app);
 }
 
-/// Console journal entries after `after`; the console window polls this.
+/// Console journal entries after `after`, and the game that runs now; the console
+/// window polls this.
 #[tauri::command(async)]
-pub fn read_console(state: State<'_, AppState>, after: u64) -> crate::console::Page {
-    state.console().read(after)
+pub fn read_console(state: State<'_, AppState>, after: u64) -> ConsolePage {
+    state.read_console(after)
 }
 
 #[tauri::command]

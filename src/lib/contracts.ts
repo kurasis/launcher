@@ -1170,11 +1170,20 @@ export interface ConsoleEntry {
   text: string;
 }
 
+/** The game the launcher runs now, for the console's status line (D-072). */
+export interface ConsoleRun {
+  state: RunState;
+  /** Since the game started, by the core's steady clock; absent before it runs or when not known. */
+  runningMs?: number;
+}
+
 export interface ConsolePage {
   entries: ConsoleEntry[];
   lastSeq: number;
   /** Entries dropped from the journal before this reader saw them. */
   missed: number;
+  /** Absent while no game runs. */
+  run?: ConsoleRun;
 }
 
 /** What a backup holds (D-047). */

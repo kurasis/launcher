@@ -1599,6 +1599,9 @@ export type Messages = {
     readonly windowTitle: string;
     readonly logLabel: string;
     readonly keeps: (values: { count: number }) => string;
+    readonly gameStarting: string;
+    readonly gameRunning: string;
+    readonly gameRunningFor: (values: { duration: string | number }) => string;
   };
   readonly diagnostics: {
     readonly recentTitle: string;

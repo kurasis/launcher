@@ -916,3 +916,189 @@ fn a_room_gets_one_installation_of_its_own() {
         Some(room)
     );
 }
+
+fn game_run(run_id: &str, started_at: chrono::DateTime<Utc>) -> RunSummary {
+    RunSummary {
+        run_id: run_id.into(),
+        kind: RunKind::Game,
+        instance_id: Some(InstanceId::generate()),
+        state: RunState::Preflight,
+        started_at,
+        ended_at: None,
+        exit_code: None,
+        duration_ms: None,
+        drain_timed_out: false,
+        output_tail: vec!["[Render thread/INFO]: Connecting to play.example, 25565".into()],
+        output_lines_dropped: 0,
+        error: None,
+        logging_degraded: false,
+        signal: None,
+        diagnosis: None,
+        server: Some("play.example:25565".into()),
+    }
+}
+
+#[test]
+fn a_game_run_counts_from_when_the_game_first_ran() {
+    use std::time::{Duration, Instant};
+    const MINUTE: Duration = Duration::from_secs(60);
+    // Far enough from the steady clock's start that a survivor's age fits before it.
+    let launch = Instant::now() + 60 * MINUTE;
+    let wall = Utc::now();
+    let mut run = game_run("1b2c3d4e-0000-4000-8000-000000000001", wall);
+    let mark = GameMark::begin(&run, launch, wall).unwrap();
+    // Starting: no time yet, and no time key in what the window gets.
+    assert_eq!(
+        serde_json::to_value(mark.at(launch + MINUTE)).unwrap(),
+        serde_json::json!({ "state": "preflight" })
+    );
+    // The time counts from the spawn, not from the checks before it.
+    let spawn = launch + 2 * MINUTE;
+    run.state = RunState::Running;
+    let mark = GameMark::update(Some(mark), &run, spawn).unwrap();
+    let at = mark.at(spawn + 42 * MINUTE);
+    assert_eq!(
+        at,
+        GameRun {
+            state: RunState::Running,
+            running_ms: Some(2_520_000)
+        }
+    );
+    // Only the state and the time: no server, ids or output.
+    assert_eq!(
+        serde_json::to_value(at).unwrap(),
+        serde_json::json!({ "state": "running", "runningMs": 2_520_000 })
+    );
+    // Later changes keep the start; stopping still counts.
+    let mark = GameMark::update(Some(mark), &run, spawn + 5 * MINUTE).unwrap();
+    run.state = RunState::Stopping;
+    let mark = GameMark::update(Some(mark), &run, spawn + 6 * MINUTE).unwrap();
+    assert_eq!(
+        mark.at(spawn + 10 * MINUTE),
+        GameRun {
+            state: RunState::Stopping,
+            running_ms: Some(600_000)
+        }
+    );
+    // A steady clock: asked before its start, no time has passed.
+    assert_eq!(mark.at(spawn - MINUTE).running_ms, Some(0));
+    for state in [
+        RunState::Exited,
+        RunState::Failed,
+        RunState::Cancelled,
+        RunState::Stopped,
+    ] {
+        run.state = state;
+        assert_eq!(GameMark::update(Some(mark), &run, spawn), None, "{state:?}");
+        assert_eq!(GameMark::begin(&run, spawn, wall), None, "{state:?}");
+    }
+    // The lifecycle check's child is not a game.
+    run.state = RunState::Running;
+    run.kind = RunKind::LifecycleTest;
+    assert_eq!(GameMark::begin(&run, spawn, wall), None);
+    assert_eq!(GameMark::update(Some(mark), &run, spawn), None);
+}
+
+#[test]
+fn a_game_found_after_a_restart_counts_from_its_start_on_record() {
+    use std::time::{Duration, Instant};
+    let now = Instant::now() + Duration::from_secs(3600);
+    let wall = Utc::now();
+    let mut run = game_run(
+        "1b2c3d4e-0000-4000-8000-000000000004",
+        wall - chrono::Duration::minutes(10),
+    );
+    run.state = RunState::Running;
+    let mark = GameMark::begin(&run, now, wall).unwrap();
+    assert_eq!(mark.at(now).running_ms, Some(600_000));
+    // A start on record after the clock's now says nothing true: no time is shown,
+    // and none appears later.
+    run.started_at = wall + chrono::Duration::minutes(10);
+    let mark = GameMark::begin(&run, now, wall).unwrap();
+    assert_eq!(mark.at(now).running_ms, None);
+    let mark = GameMark::update(Some(mark), &run, now).unwrap();
+    assert_eq!(mark.at(now + Duration::from_secs(60)).running_ms, None);
+}
+
+#[test]
+fn the_console_sees_the_current_game_until_it_ends() {
+    let dir = tempfile::tempdir().unwrap();
+    let state = state_at(dir.path(), RecordingSink::default());
+    let page = state.read_console(0);
+    assert_eq!(page.run, None);
+    let json = serde_json::to_value(&page).unwrap();
+    assert!(json.get("run").is_none(), "{json}");
+    assert!(json.get("entries").is_some() && json.get("lastSeq").is_some());
+
+    let id = "1b2c3d4e-0000-4000-8000-000000000002";
+    state.begin_run(game_run(id, Utc::now() - chrono::Duration::minutes(5)));
+    let page = state.read_console(0);
+    assert_eq!(
+        page.run,
+        Some(GameRun {
+            state: RunState::Preflight,
+            running_ms: None
+        })
+    );
+    // The journal still comes with it, and nothing of the run but its state.
+    assert!(
+        page.page
+            .entries
+            .iter()
+            .any(|e| e.text.starts_with("Run 1b2c3d4e"))
+    );
+    let json = serde_json::to_value(&page).unwrap();
+    assert_eq!(json["run"], serde_json::json!({ "state": "preflight" }));
+    assert!(!json.to_string().contains("play.example"), "{json}");
+
+    // Another run's update changes nothing.
+    let other = "1b2c3d4e-0000-4000-8000-00000000ffff";
+    state.update_run(other, |run| run.state = RunState::Running);
+    assert_eq!(
+        state.read_console(0).run.map(|r| r.state),
+        Some(RunState::Preflight)
+    );
+    // The time counts from the spawn: the five minutes of checks are not in it.
+    state.update_run(id, |run| run.state = RunState::Running);
+    let run = state.read_console(0).run.unwrap();
+    assert_eq!(run.state, RunState::Running);
+    assert!(run.running_ms.unwrap() < 60_000, "{run:?}");
+    // A later read starts where the last one stopped and still carries the run.
+    let after = state.read_console(0).page.last_seq;
+    let page = state.read_console(after);
+    assert!(page.page.entries.is_empty());
+    assert_eq!(page.run.map(|r| r.state), Some(RunState::Running));
+
+    // Another run's end leaves this game shown.
+    state.finish_run(other, |run| run.state = RunState::Exited);
+    assert_eq!(
+        state.read_console(0).run.map(|r| r.state),
+        Some(RunState::Running)
+    );
+    state.finish_run(id, |run| {
+        run.state = RunState::Exited;
+        run.ended_at = Some(Utc::now());
+    });
+    assert_eq!(state.read_console(0).run, None);
+    assert_eq!(state.current_run(), None);
+}
+
+#[test]
+fn the_console_never_waits_on_a_store_write() {
+    let dir = tempfile::tempdir().unwrap();
+    let state = state_at(dir.path(), RecordingSink::default());
+    state.begin_run(game_run("1b2c3d4e-0000-4000-8000-000000000003", Utc::now()));
+    std::thread::scope(|scope| {
+        // What a slow store write looks like from outside: the state held.
+        let held = state.lock();
+        let (sent, read) = std::sync::mpsc::channel();
+        let state = &state;
+        scope.spawn(move || sent.send(state.read_console(0)).unwrap());
+        let page = read.recv_timeout(std::time::Duration::from_secs(10));
+        drop(held);
+        assert_eq!(
+            page.expect("the console read waited").run.map(|r| r.state),
+            Some(RunState::Preflight)
+        );
+    });
+}
