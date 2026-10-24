@@ -6,9 +6,10 @@
 //!
 //! Beside it, one hosting permit covers a world server (Worlds with Friends). A server
 //! runs next to a game, and next to an install, a backup or a restore of an installation:
-//! the host installs the room's game while its world is open. An install only adds
-//! missing files and puts a runtime in its own content-addressed folder, so the server's
-//! Java is not replaced. Never next to a repair (it replaces files) or whole-data
+//! the host installs the room's game while its world is open. Deleting a backup is work
+//! of the backup's installation too; a server never reads the backup store. An install
+//! only adds missing files and puts a runtime in its own content-addressed folder, so the
+//! server's Java is not replaced. Never next to a repair (it replaces files) or whole-data
 //! operations: data relocation, and backup or restore work of no installation (reset).
 
 use std::sync::{Arc, Mutex, PoisonError};
@@ -337,6 +338,20 @@ mod tests {
         }
         assert_eq!(host.activity().operation_id, "host-1");
         assert!(registry.current().is_none());
+    }
+
+    #[test]
+    fn server_starts_beside_installation_backup_work() {
+        let registry = ActivityRegistry::new();
+        for kind in [OperationKind::Backup, OperationKind::Restore] {
+            let _work = registry
+                .try_acquire(kind, Some(InstanceId::generate()), "op-1")
+                .unwrap();
+            let host = registry
+                .try_acquire_hosting(Uuid::new_v4(), "host-1")
+                .unwrap();
+            drop(host);
+        }
     }
 
     #[test]

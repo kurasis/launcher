@@ -394,11 +394,15 @@ pub fn restore(state: &AppState, backup_id: &str, as_copy: bool) -> LauncherResu
     })
 }
 
-/// Deletes a backup and the stored files no other backup uses.
+/// Deletes a backup and the stored files no other backup uses. It is work of the
+/// backup's installation (which may be deleted): it runs beside a world server,
+/// which never reads this store (D-068), but not beside a game, another backup or a
+/// reset.
 pub fn delete(state: &AppState, backup_id: &str) -> LauncherResult<u64> {
     let root = data_root(state)?;
-    with_permit(state, OperationKind::Backup, None, || {
-        let store = Store::new(root.path());
+    let store = Store::new(root.path());
+    let owner = store.load(backup_id)?.info.instance_id;
+    with_permit(state, OperationKind::Backup, Some(owner), || {
         store.delete(backup_id)?;
         let freed = store.collect();
         state

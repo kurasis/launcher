@@ -66,6 +66,8 @@ fn worlds_are_backed_up_and_restored_in_place_or_as_copies() {
     assert_eq!(backup.file_count, 2);
     assert!(state.activity().current().is_none(), "permit released");
 
+    // A later modification time, so the next backup reads the file again.
+    std::thread::sleep(std::time::Duration::from_millis(20));
     std::fs::write(folder.join("level.dat"), "v2").unwrap();
     restore(&state, &backup.id, false).unwrap();
     assert_eq!(
@@ -110,6 +112,156 @@ fn nothing_runs_beside_the_game_or_another_backup() {
         error.code,
         ErrorCode::AppBusy | ErrorCode::InstanceBusy | ErrorCode::GameAlreadyRunning
     ));
+}
+
+#[test]
+fn a_backup_is_not_deleted_beside_the_game_or_another_backup() {
+    let (_dir, state, id) = setup();
+    world(&state, id, "W", "v1");
+    let backup = create(
+        &state,
+        id,
+        Scope::World { name: "W".into() },
+        Reason::Manual,
+    )
+    .unwrap();
+    for kind in [OperationKind::Launch, OperationKind::Backup] {
+        let _held = state
+            .activity()
+            .try_acquire(kind, Some(id), "op-1")
+            .unwrap();
+        let error = delete(&state, &backup.id).unwrap_err();
+        assert!(
+            matches!(
+                error.code,
+                ErrorCode::AppBusy | ErrorCode::InstanceBusy | ErrorCode::GameAlreadyRunning
+            ),
+            "{kind:?}: {error:?}"
+        );
+    }
+    assert_eq!(overview(&state).unwrap().backups.len(), 1);
+}
+
+#[test]
+fn backups_are_made_restored_and_deleted_beside_a_hosted_world() {
+    let (_dir, state, id) = setup();
+    let folder = world(&state, id, "W", "v1");
+    let host = state
+        .activity()
+        .try_acquire_hosting(Uuid::new_v4(), "host-1")
+        .unwrap();
+    let alone = |state: &AppState| {
+        assert!(state.activity().current().is_none(), "permit released");
+        assert_eq!(state.activity().hosting().unwrap().operation_id, "host-1");
+    };
+    let scope = Scope::World { name: "W".into() };
+    let backup = create(&state, id, scope, Reason::Manual).unwrap();
+    alone(&state);
+    // A later modification time, so the next backup reads the file again.
+    std::thread::sleep(std::time::Duration::from_millis(20));
+    std::fs::write(folder.join("level.dat"), "v2").unwrap();
+    restore(&state, &backup.id, false).unwrap();
+    restore(&state, &backup.id, true).unwrap();
+    alone(&state);
+    // The newest first: the state replaced by the restore ("v2"), then the manual one.
+    let all = overview(&state).unwrap().backups;
+    assert_eq!(all.len(), 2);
+    assert_eq!(all[0].reason, Reason::BeforeRestore);
+    assert_eq!(delete(&state, &all[0].id).unwrap(), 2, "\"v2\" only");
+    alone(&state);
+    assert_eq!(delete(&state, &backup.id).unwrap(), 2 + 6);
+    alone(&state);
+    assert!(overview(&state).unwrap().backups.is_empty());
+    drop(host);
+}
+
+#[test]
+fn a_deleted_installations_backup_is_deleted_beside_a_hosted_world() {
+    let (_dir, state, _id) = setup();
+    let other = state
+        .create_instance(request(CreateInstancePayload {
+            display_name: "Gone".into(),
+            version_id: "1.21.1".into(),
+            loader: None,
+        }))
+        .unwrap()
+        .id;
+    world(&state, other, "M", "m1");
+    let saved = delete_instance(&state, other, true).unwrap().unwrap();
+    assert!(state.instance(other).is_none());
+    let _host = state
+        .activity()
+        .try_acquire_hosting(Uuid::new_v4(), "host-1")
+        .unwrap();
+    assert!(delete(&state, &saved.id).unwrap() > 0);
+    assert!(state.activity().current().is_none(), "permit released");
+    assert!(overview(&state).unwrap().backups.is_empty());
+}
+
+#[test]
+fn junk_backup_ids_are_refused_before_any_permit() {
+    let (_dir, state, id) = setup();
+    world(&state, id, "W", "v1");
+    let backup = create(
+        &state,
+        id,
+        Scope::World { name: "W".into() },
+        Reason::Manual,
+    )
+    .unwrap();
+    let uuid = Uuid::parse_str(&backup.id).unwrap();
+    let _host = state
+        .activity()
+        .try_acquire_hosting(Uuid::new_v4(), "host-1")
+        .unwrap();
+    let long = "a".repeat(10_000);
+    for junk in [
+        String::new(),
+        "../snapshots/x".into(),
+        format!("../snapshots/{}", backup.id),
+        "not-a-uuid".into(),
+        long,
+        "a\0b".into(),
+        Uuid::new_v4().to_string(),
+        // Other spellings of the real one: never a path, so never another file.
+        backup.id.to_uppercase(),
+        format!("{{{}}}", backup.id),
+        format!("urn:uuid:{}", backup.id),
+        uuid.simple().to_string(),
+    ] {
+        let error = delete(&state, &junk).unwrap_err();
+        assert_eq!(error.code, ErrorCode::InvalidInput, "{junk:.40}");
+        assert!(state.activity().current().is_none(), "{junk:.40}");
+        assert_eq!(
+            restore(&state, &junk, true).unwrap_err().code,
+            ErrorCode::InvalidInput,
+            "{junk:.40}"
+        );
+    }
+    // Refused by their spelling, not because no file has that name: where names ignore
+    // case (Windows, macOS) the uppercase one is the real manifest, which the loop above
+    // proves untouched. Linux keeps each spelling as a file of its own.
+    if cfg!(target_os = "linux") {
+        let snapshots = state.data_root().unwrap().path().join("backups/snapshots");
+        let manifest = snapshots.join(format!("{}.json", backup.id));
+        for other in [
+            backup.id.to_uppercase(),
+            format!("{{{}}}", backup.id),
+            format!("urn:uuid:{}", backup.id),
+            uuid.simple().to_string(),
+        ] {
+            let copy = snapshots.join(format!("{other}.json"));
+            std::fs::copy(&manifest, &copy).unwrap();
+            assert_eq!(
+                delete(&state, &other).unwrap_err().code,
+                ErrorCode::InvalidInput,
+                "{other}"
+            );
+            assert!(copy.exists(), "{other}");
+            std::fs::remove_file(copy).unwrap();
+        }
+    }
+    assert_eq!(overview(&state).unwrap().backups.len(), 1);
 }
 
 #[test]
