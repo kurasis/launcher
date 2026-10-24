@@ -709,7 +709,11 @@ pub fn own_versions(lock: &ContentLock, local: &[LocalJar]) -> Vec<OwnVersion> {
         .iter()
         .filter(|jar| lock.at(enabled_form(&jar.path)).is_none())
         .filter_map(|jar| {
-            let own = jar.manifests.iter().flat_map(|m| &m.mods).find(|m| !m.nested)?;
+            let own = jar
+                .manifests
+                .iter()
+                .flat_map(|m| &m.mods)
+                .find(|m| !m.nested)?;
             Some(OwnVersion {
                 path: jar.path.clone(),
                 version: own.version.clone()?,

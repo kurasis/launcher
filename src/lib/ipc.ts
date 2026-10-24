@@ -600,8 +600,8 @@ export const ipc = {
   modsIdentify: (instanceId: string): Promise<ContentIdentified[]> =>
     invoke<ContentIdentified[]>('mods_identify', { instanceId }),
   /** What the mods' jars say: problems of the set, and the versions of the player's own. */
-  modsFolderCheck: (instanceId: string): Promise<ModsFolderCheck> =>
-    invoke<ModsFolderCheck>('mods_folder_check', { instanceId }),
+  modsFolderCheck: (instanceId: string): Promise<ModsFolderCheck | null> =>
+    invoke<ModsFolderCheck | null>('mods_folder_check', { instanceId }),
   modsUpdates: (instanceId: string): Promise<ContentUpdate[]> =>
     invoke<ContentUpdate[]>('mods_updates', { instanceId }),
   modsSetEnabled: (

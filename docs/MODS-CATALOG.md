@@ -123,10 +123,11 @@ gives `[]`. A new reader version (`MANIFEST_RULES` in `import.rs`) reads them al
   them clean (or the owner let them go); dependencies carry `title`, `slug` and
   `iconThumb` when the catalog has the project.
 - `POST /v1/lookup` and a modpack's files (`GET /v1/versions/{id}/pack`) carry, for
-  a file the catalog has, `projectId`, `versionId` and, while the project is shown,
-  its `title`, `iconThumb` and the version's `versionNumber`. The launcher asks it
-  each time it lists an installation, so a modpack's files and the player's own show
-  their names and icons.
+  a file the catalog has, `projectId`, `versionId`, the version's `source` and, while
+  the project is shown, its `title`, `iconThumb` and the version's `versionNumber`. The
+  launcher asks it each time it lists an installation, so a modpack's files and the
+  player's own show their names and icons, and every file where it came from. A
+  version says its `source` too.
 
 ## The owner's commands
 

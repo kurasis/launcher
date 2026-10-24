@@ -2324,7 +2324,8 @@ async fn an_install_turns_on_what_it_needs() {
     let lock = content::load_lock(&root, instance_id);
     let a = lock.items.iter().find(|i| i.path == "mods/a.jar").unwrap();
     assert_eq!(a.requires.as_deref(), Some(&[id(2)][..]));
-    // And where each version came from, for the list.
+    // And where the version it installed came from, for the list; the library
+    // was only turned on, so the catalog is still asked about it.
     let sources: Vec<(String, Option<String>)> = content::list(&root, instance_id)
         .items
         .into_iter()
@@ -2334,10 +2335,13 @@ async fn an_install_turns_on_what_it_needs() {
         sources,
         [
             ("mods/a.jar".to_owned(), Some("modrinth".to_owned())),
-            ("mods/lib.jar".to_owned(), Some("curseforge".to_owned()))
+            ("mods/lib.jar".to_owned(), None)
         ]
     );
-    assert!(content::unsourced_files(&root, instance_id).is_empty());
+    assert_eq!(
+        content::unsourced_files(&root, instance_id),
+        [("mods/lib.jar".to_owned(), hash(20))]
+    );
 }
 
 #[tokio::test]
