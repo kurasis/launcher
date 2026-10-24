@@ -2545,6 +2545,11 @@ skins-mod <channel>` there only checks the signature against the public key and
   only the last answer counts) and shows what may stop the set starting, as before a
   launch. Offers from a check stay through a file turned off or on, at its new path; a
   removed file takes its offer away, and an install or a pack update clears them.
+- **A version list past our bound (2026-10-24).** Crash Assistant (in Fabulously
+  Optimized) has 1,691 versions, and Modrinth's list with changelogs is 52 MB, past the
+  16 MB bound for an answer, so its import failed and the pack's file had no card.
+  Such a list is asked again without changelogs (1.5 MB); the changelogs kept here stay,
+  and the newest versions' (one per game version and loader) are asked for 50 at a time.
 - **Name search.** A name asks both sources: Modrinth's search API and CurseForge's
   search page (its API search is refused). The page's hits are read from the App Router
   stream (objects with a numeric ID, a slug, a name and a class we keep, Minecraft

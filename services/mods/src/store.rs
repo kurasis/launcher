@@ -1144,6 +1144,26 @@ impl Store {
     }
 
     /// A project's versions from a source: our ID and theirs.
+    /// The changelogs kept for a project's versions from a source, by the
+    /// source's version ID.
+    pub fn changelogs(
+        &self,
+        project: &str,
+        source: &str,
+    ) -> Result<std::collections::HashMap<String, String>> {
+        let db = self.db();
+        let mut q = db
+            .prepare(
+                "SELECT source_id, changelog FROM version
+                 WHERE project_id = ?1 AND source = ?2 AND changelog != ''",
+            )
+            .map_err(sql)?;
+        q.query_map(params![project, source], |r| Ok((r.get(0)?, r.get(1)?)))
+            .map_err(sql)?
+            .collect::<std::result::Result<_, _>>()
+            .map_err(sql)
+    }
+
     pub fn version_sources(&self, project: &str, source: &str) -> Result<Vec<(String, String)>> {
         let db = self.db();
         let mut q = db
