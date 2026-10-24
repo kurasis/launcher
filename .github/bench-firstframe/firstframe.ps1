@@ -1,8 +1,10 @@
 # Temporary measurement (not for main): what the main window shows from the moment
 # it appears until the interface draws, on Windows. Starts the launcher several
 # times per theme and language, grabs the window's client area as often as it can
-# and names each frame: none (no window yet), white, ground (the theme's ground),
-# silhouette (the rail without text) or interface (the rail with text).
+# and names each frame: none (no window yet), white, light-ground or dark-ground,
+# silhouette (the rail without text) or interface (the rail with text). The
+# details are white%, light ground%, dark ground% beside the rail, rail% and the
+# bright pixels in the rail.
 # Prints fixed words and numbers only; saves some frames as PNG. Windows PowerShell 5.1.
 param(
   [Parameter(Mandatory)] [string] $Exe,
@@ -90,7 +92,7 @@ public static class FirstFrame {
     return "other";
   }
 
-  // state|corner|white%|rail%|bright
+  // state|white%|light-ground%|dark-ground%|rail%|bright
   public static string Describe(Bitmap b, bool rtl) {
     int w = b.Width, h = b.Height;
     var data = b.LockBits(new Rectangle(0, 0, w, h), ImageLockMode.ReadOnly, PixelFormat.Format32bppArgb);
@@ -98,35 +100,37 @@ public static class FirstFrame {
     Marshal.Copy(data.Scan0, px, 0, px.Length);
     int stride = data.Stride;
     b.UnlockBits(data);
-    Func<int, int, int[]> at = (x, y) => {
-      int i = y * stride + x * 4;
-      return new[] { (int)px[i + 2], (int)px[i + 1], (int)px[i] };
-    };
-    int white = 0, all = 0;
-    for (int y = 0; y < h; y += 4) for (int x = 0; x < w; x += 4) {
-      var c = at(x, y); all++;
-      if (c[0] >= 250 && c[1] >= 250 && c[2] >= 250) white++;
-    }
-    // The rail is 15rem (240 px) wide from 1040 px up.
-    int x0 = rtl ? w - 240 : 0, x1 = rtl ? w : 240;
+    // The rail is 15rem (240 px) from 1040 px up, else 4.5rem (72 px); the
+    // bottom rows may lie under the taskbar on a small screen.
+    int railW = w >= 1040 ? 240 : 72;
+    int bottom = h - 120;
+    int x0 = rtl ? w - railW : 0, x1 = rtl ? w : railW;
+    int white = 0, light = 0, dark = 0, all = 0;
     int rail = 0, bright = 0, strip = 0;
-    for (int y = 0; y < h; y += 2) for (int x = x0; x < x1; x += 2) {
-      var c = at(x, y); strip++;
-      bool isRail = false;
-      foreach (var k in Rail) if (Near(c[0], c[1], c[2], k, 3)) { isRail = true; break; }
-      if (isRail) rail++;
-      if (Math.Min(c[0], Math.Min(c[1], c[2])) >= 130) bright++;
+    for (int y = 0; y < bottom; y += 2) for (int x = 0; x < w; x += 2) {
+      int i = y * stride + x * 4;
+      int r = px[i + 2], g = px[i + 1], bl = px[i];
+      if (x >= x0 && x < x1) {
+        strip++;
+        foreach (var k in Rail) if (Near(r, g, bl, k, 3)) { rail++; break; }
+        if (Math.Min(r, Math.Min(g, bl)) >= 130) bright++;
+      } else {
+        all++;
+        if (r >= 250 && g >= 250 && bl >= 250) white++;
+        else if (Near(r, g, bl, new[] { 0xf3, 0xf5, 0xf0 }, 3)) light++;
+        else if (Near(r, g, bl, new[] { 0x0f, 0x17, 0x13 }, 3)) dark++;
+      }
     }
-    var corner = at(rtl ? 4 : w - 5, 4);
-    string cornerName = Name(corner[0], corner[1], corner[2]);
-    int whitePct = white * 100 / all, railPct = rail * 100 / strip;
+    int whitePct = white * 100 / all, lightPct = light * 100 / all, darkPct = dark * 100 / all;
+    int railPct = rail * 100 / strip;
     string state;
-    if (whitePct >= 95) state = "white";
+    if (whitePct >= 90 && railPct < 5) state = "white";
     else if (railPct >= 50 && bright >= 30) state = "interface";
     else if (railPct >= 50) state = "silhouette";
-    else if (cornerName.EndsWith("-ground") && whitePct == 0 && railPct < 5) state = "ground(" + cornerName + ")";
+    else if (lightPct >= 90) state = "light-ground";
+    else if (darkPct >= 90) state = "dark-ground";
     else state = "other";
-    return state + "|" + cornerName + "|" + whitePct + "|" + railPct + "|" + bright;
+    return state + "|" + whitePct + "|" + lightPct + "|" + darkPct + "|" + railPct + "|" + bright;
   }
 }
 '@
@@ -140,7 +144,8 @@ $scenarios = @(
   @{ name = 'system-light'; theme = 'system'; language = 'en'; appsLight = 1 }
 )
 $personalize = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize'
-New-Item -Path $personalize -Force -ErrorAction SilentlyContinue | Out-Null
+if (-not (Test-Path $personalize)) { New-Item -Path $personalize -Force | Out-Null }
+$shell = New-Object -ComObject Shell.Application
 New-Item -ItemType Directory -Force $Out, $DataRoot | Out-Null
 
 function Stop-Launcher([int] $id) {
@@ -165,6 +170,9 @@ foreach ($s in $scenarios) {
   [IO.File]::WriteAllText((Join-Path $DataRoot 'settings.json'), $settings)
   $rtl = $s.language -eq 'ar'
   for ($i = 1; $i -le $Starts; $i++) {
+    # Nothing in front of the window as it opens (the runner's console is).
+    $shell.MinimizeAll()
+    Start-Sleep -Milliseconds 800
     $frames = [FirstFrame]::Run($Exe, $Ms)
     $closed = Stop-Launcher ([FirstFrame]::LastPid)
     $runs = @()
@@ -174,18 +182,18 @@ foreach ($s in $scenarios) {
       if ($f.Image) {
         $d = [FirstFrame]::Describe($f.Image, $rtl)
         $size = "$($f.Image.Width)x$($f.Image.Height)"
-      } else { $d = 'none|-|-|-|-' }
+      } else { $d = 'none|-|-|-|-|-' }
       $state = $d.Split('|')[0]
       if ($state -ne $prev) {
         $runs += [pscustomobject]@{ state = $state; from = $f.T; detail = $d }
         if ($i -eq $Starts -and $f.Image) {
-          $f.Image.Save((Join-Path $Out "$($s.name)-$($f.T)ms-$($state -replace '[()]', '_').png"))
+          $f.Image.Save((Join-Path $Out "$($s.name)-$($f.T)ms-$state.png"), [System.Drawing.Imaging.ImageFormat]::Png)
         }
         $prev = $state
       }
     }
     $last = $frames[$frames.Count - 1]
-    if ($i -eq $Starts -and $last.Image) { $last.Image.Save((Join-Path $Out "$($s.name)-$($last.T)ms-last.png")) }
+    if ($i -eq $Starts -and $last.Image) { $last.Image.Save((Join-Path $Out "$($s.name)-$($last.T)ms-last.png"), [System.Drawing.Imaging.ImageFormat]::Png) }
     $line = for ($k = 0; $k -lt $runs.Count; $k++) {
       $to = if ($k + 1 -lt $runs.Count) { $runs[$k + 1].from } else { $last.T }
       "$($runs[$k].state) $($runs[$k].from)-$to"

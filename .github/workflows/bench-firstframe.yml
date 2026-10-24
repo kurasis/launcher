@@ -84,6 +84,11 @@ jobs:
         run: |
           # The bench's starts must not count as players' starts.
           Add-Content -Path "$env:windir\System32\drivers\etc\hosts" -Value "`n0.0.0.0 stats.lapi.sh`n:: stats.lapi.sh"
+          # The window (1100x720) does not fit the runner's 1024x768 screen.
+          try { Set-DisplayResolution -Width 1920 -Height 1080 -Force -ErrorAction Stop; Write-Host 'resolution set' } catch { Write-Host 'resolution unchanged' }
+          Add-Type -AssemblyName System.Windows.Forms
+          $b = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
+          Write-Host "screen $($b.Width)x$($b.Height)"
           $exe = (Resolve-Path src-tauri/target/release/launcher.exe).Path
           & "$env:RUNNER_TEMP\bench\firstframe.ps1" -Exe $exe -DataRoot (Join-Path $env:LOCALAPPDATA 'app.launcher') -Out "$env:RUNNER_TEMP\frames"
 
