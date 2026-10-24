@@ -1214,6 +1214,13 @@ export interface BackupOverview {
   backups: BackupInfo[];
   worlds: { instanceId: string; worlds: string[] }[];
   storeBytes: number;
+  /**
+   * Per deleted installation with backups, newest backup first: the bytes only its
+   * backups use, which deleting them all frees (D-055).
+   */
+  deletedBytes: { instanceId: string; bytes: number }[];
+  /** The bytes only deleted installations' backups use, together. */
+  deletedTotalBytes: number;
 }
 
 /** What deleting an installation would lose (D-055). */

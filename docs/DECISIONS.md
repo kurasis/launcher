@@ -3286,7 +3286,12 @@ skins-mod <channel>` there only checks the signature against the public key and
   a copy" stays for worlds only, as the core restores a whole installation only in its
   place. The number of backups kept is checked (1 to 100) before anything is sent. While
   the screen's own backup runs its buttons keep the focus; a game or another operation
-  disables them.
+  disables them. Under Deleted installations, one line per installation says how many
+  backups it has and what deleting them all frees: the files no other installation's
+  backups use, counted by the core from the manifests. With more than one, a last line
+  gives the same for all of them together, which can be more than the lines added up
+  (a deleted modpack and its deleted copy share their files). A line is left out
+  rather than guessed when the core's count and the screen's list differ.
 - **Leave a review:** underline tabs (one shared `Tabs` component) "New review" and "My
   reviews". Beside the form, while there is room, the five newest reviews with their
   state, a "New" mark on an unread answer and Open, which shows that review under My

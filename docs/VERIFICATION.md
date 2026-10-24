@@ -1579,6 +1579,14 @@ proxy that was stopped and started to cut and restore the connection.
   interrupted delete finished at the next start; the interface lists the contents,
   backs up or not, cancels, waits while something runs, drops the installation on
   the `instance_removed` event and brings it back from Backups.
+- **Space of deleted installations (D-072, 2026-10-24):** `backup::store` tests count,
+  per installation and for a group, the files only those snapshots use (a file used
+  twice once, shared files for neither alone, together for the pair) and check that
+  deleting them frees exactly that; sums never overflow on an edited manifest. A
+  service test reads it from the overview (camelCase) for a deleted installation and
+  its deleted copy and deletes their backups for the same bytes. Vitest: a line per
+  deleted installation and the total, not in a live region, gone after a delete, and
+  left out when the core's count and the list differ.
 
 ## Minecraft arguments and fullscreen (D-056)
 

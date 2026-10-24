@@ -1676,7 +1676,9 @@
       "bringBack": "Bring back",
       "broughtBack": "\"{name}\" is back. Install it to play.",
       "keepRange": "Enter a whole number from 1 to {max, number}.",
-      "loading": "Looking for backups…"
+      "loading": "Looking for backups…",
+      "deletedSpace": "{count, plural, one {# backup; deleting it frees {size}} other {# backups; deleting them all frees {size}}}",
+      "deletedAll": "All deleted installations"
     },
     "gallery": {
       "title": "Screenshots",

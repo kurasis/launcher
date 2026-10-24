@@ -463,3 +463,73 @@ fn deleted_installations_can_come_back_from_their_backup() {
     assert!(!trash.exists());
     assert!(state.instance(other).is_some());
 }
+
+#[test]
+fn the_overview_says_what_deleted_installations_backups_alone_hold() {
+    let (_dir, state, id) = setup();
+    let make = |name: &str| {
+        state
+            .create_instance(request(CreateInstancePayload {
+                display_name: name.into(),
+                version_id: "1.21.1".into(),
+                loader: None,
+            }))
+            .unwrap()
+            .id
+    };
+    // Every world's region holds "chunks": stored once, used by the live one too.
+    world(&state, id, "W", "v1");
+    create(
+        &state,
+        id,
+        Scope::World { name: "W".into() },
+        Reason::Manual,
+    )
+    .unwrap();
+    let gone = make("Gone");
+    world(&state, gone, "M", "m1");
+    let saved = delete_instance(&state, gone, true).unwrap().unwrap();
+
+    let found = overview(&state).unwrap();
+    assert_eq!(
+        found.deleted_bytes,
+        [DeletedBytes {
+            instance_id: gone,
+            bytes: 2
+        }],
+        "\"m1\" only"
+    );
+    assert_eq!(found.deleted_total_bytes, 2);
+    let json = serde_json::to_value(&found).unwrap();
+    assert_eq!(
+        json["deletedBytes"],
+        serde_json::json!([{ "instanceId": gone.to_string(), "bytes": 2 }])
+    );
+    assert_eq!(json["deletedTotalBytes"], 2);
+
+    // A copy deleted too: what the two share counts for neither alone, but for both
+    // together. The newest deletion comes first.
+    let copy = make("Gone copy");
+    world(&state, copy, "M", "m1");
+    let copied = delete_instance(&state, copy, true).unwrap().unwrap();
+    let found = overview(&state).unwrap();
+    assert_eq!(
+        found.deleted_bytes,
+        [
+            DeletedBytes {
+                instance_id: copy,
+                bytes: 0
+            },
+            DeletedBytes {
+                instance_id: gone,
+                bytes: 0
+            }
+        ]
+    );
+    assert_eq!(found.deleted_total_bytes, 2);
+    assert_eq!(delete(&state, &copied.id).unwrap(), 0);
+    assert_eq!(delete(&state, &saved.id).unwrap(), 2);
+    let found = overview(&state).unwrap();
+    assert!(found.deleted_bytes.is_empty());
+    assert_eq!(found.deleted_total_bytes, 0);
+}

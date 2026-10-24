@@ -2,6 +2,7 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import { mockIPC } from '@tauri-apps/api/mocks';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { AppSnapshot, BackupInfo, BackupOverview, BackupScope } from '../../lib/contracts';
+import { loadLanguage, setLanguage, strings } from '../../lib/strings';
 import { instanceFixture, snapshotFixture } from '../../test/fixtures';
 import { BackupsView } from './BackupsView';
 
@@ -58,6 +59,8 @@ const oneWorld: BackupOverview = {
   backups: [backup()],
   worlds: [{ instanceId: instance.id, worlds: ['My World'] }],
   storeBytes: 5 * 1024 * 1024,
+  deletedBytes: [],
+  deletedTotalBytes: 0,
 };
 
 /** The answer inside the question, not the row's button of the same name. */
@@ -66,6 +69,7 @@ const answer = (name: string) =>
 
 afterEach(() => {
   vi.useRealTimers();
+  setLanguage('en');
 });
 
 describe('BackupsView', () => {
@@ -74,6 +78,8 @@ describe('BackupsView', () => {
       backups: [],
       worlds: [{ instanceId: instance.id, worlds: ['My World'] }],
       storeBytes: 0,
+      deletedBytes: [],
+      deletedTotalBytes: 0,
     });
     expect(await screen.findByText('My World')).toBeVisible();
     expect(screen.getByText('Not backed up yet')).toBeVisible();
@@ -261,7 +267,13 @@ describe('BackupsView', () => {
   });
 
   it('switches automatic backups after playing', async () => {
-    const { calls } = setup({ backups: [], worlds: [], storeBytes: 0 });
+    const { calls } = setup({
+      backups: [],
+      worlds: [],
+      storeBytes: 0,
+      deletedBytes: [],
+      deletedTotalBytes: 0,
+    });
     fireEvent.click(
       await screen.findByRole('switch', { name: /Back up changed worlds after playing/ }),
     );
@@ -273,7 +285,13 @@ describe('BackupsView', () => {
   });
 
   it('keeps only a whole number of backups from 1 to 100', async () => {
-    const { calls, rerender } = setup({ backups: [], worlds: [], storeBytes: 0 });
+    const { calls, rerender } = setup({
+      backups: [],
+      worlds: [],
+      storeBytes: 0,
+      deletedBytes: [],
+      deletedTotalBytes: 0,
+    });
     const field = await screen.findByRole('spinbutton', {
       name: 'Automatic backups kept per world',
     });
@@ -419,7 +437,7 @@ describe('BackupsView', () => {
     });
     let fail: (error: Error) => void = () => undefined;
     const { rerender } = setup(
-      { backups: [gone], worlds: [], storeBytes: 0 },
+      { backups: [gone], worlds: [], storeBytes: 0, deletedBytes: [], deletedTotalBytes: 0 },
       {
         restore_backup: () =>
           new Promise((_, reject) => {
@@ -447,6 +465,8 @@ describe('BackupsView', () => {
       backups: [backup({ instanceId: 'gone', instanceName: 'Old modpack' })],
       worlds: [],
       storeBytes: 0,
+      deletedBytes: [],
+      deletedTotalBytes: 0,
     });
     fireEvent.click(await screen.findByRole('button', { name: 'Delete' }));
     expect(screen.getByRole('alertdialog')).toHaveFocus();
@@ -463,6 +483,138 @@ describe('BackupsView', () => {
     await waitFor(() => {
       expect(screen.getByRole('list', { name: 'Deleted installations' })).toHaveFocus();
     });
+  });
+
+  it('says what deleting the backups of each deleted installation frees', async () => {
+    const M = 1024 * 1024;
+    const old = (id: string) =>
+      backup({
+        id,
+        instanceId: 'gone',
+        instanceName: 'Old modpack',
+        scope: { kind: 'installation' },
+        reason: 'before_delete',
+      });
+    let found: BackupOverview = {
+      ...oneWorld,
+      backups: [
+        backup(),
+        old('old-1'),
+        old('old-2'),
+        backup({ id: 'creative', instanceId: 'gone2', instanceName: 'Creative' }),
+      ],
+      deletedBytes: [
+        { instanceId: 'gone', bytes: 3 * M },
+        { instanceId: 'gone2', bytes: 0 },
+      ],
+      // More than the two lines: what the two share counts only together.
+      deletedTotalBytes: 4 * M,
+    };
+    setup(found, {
+      list_backups: () => found,
+      delete_backup: () => {
+        found = {
+          ...found,
+          backups: found.backups.filter((b) => b.id !== 'creative'),
+          deletedBytes: found.deletedBytes.filter((d) => d.instanceId !== 'gone2'),
+          deletedTotalBytes: 3 * M,
+        };
+        return 0;
+      },
+    });
+    const panel = await screen.findByRole('region', { name: 'Deleted installations' });
+    // A fact's value and the name beside it.
+    const fact = (text: string) => {
+      const value = within(panel).getByText(text);
+      return { term: value.previousElementSibling?.textContent, value };
+    };
+    const old2 = fact('2 backups; deleting them all frees \u20683.0 MiB\u2069');
+    expect(old2.term).toBe('Old modpack');
+    // The size's number and unit stay on one line.
+    expect(old2.value.textContent).toContain('3.0\u00a0MiB');
+    expect(fact('1 backup; deleting it frees \u20680 bytes\u2069').term).toBe('Creative');
+    expect(fact('3 backups; deleting them all frees \u20684.0 MiB\u2069').term).toBe(
+      'All deleted installations',
+    );
+    // The live installation has none; a delete says what it freed, the lines are not
+    // read out.
+    expect(panel.querySelectorAll('dd')).toHaveLength(3);
+    expect(old2.value.closest('[role=status],[role=alert],[aria-live]')).toBeNull();
+
+    const list = within(panel).getByRole('list', { name: 'Deleted installations' });
+    const creative = within(list)
+      .getAllByRole('listitem')
+      .find((row) => row.textContent.includes('Creative'));
+    if (creative === undefined) throw new Error('no row for Creative');
+    fireEvent.click(within(creative).getByRole('button', { name: 'Delete' }));
+    fireEvent.click(answer('Delete'));
+    await waitFor(() => {
+      expect(within(panel).queryByText(/^1 backup;/)).toBeNull();
+    });
+    // One deleted installation left: its line is the total.
+    expect(within(panel).getByText(/^2 backups;/)).toBeVisible();
+    expect(within(panel).queryByText('All deleted installations')).toBeNull();
+  });
+
+  it('leaves out what the core did not count', async () => {
+    const orphan = (id: string, instanceId: string, instanceName: string) =>
+      backup({ id, instanceId, instanceName });
+    setup({
+      ...oneWorld,
+      backups: [
+        orphan('a', 'gone', 'Old modpack'),
+        orphan('b', 'gone2', 'Creative'),
+        orphan('c', 'gone3', 'Test'),
+      ],
+      // Deleted after the core counted: no line rather than a guess, and no total that
+      // leaves it out.
+      deletedBytes: [
+        { instanceId: 'gone', bytes: 1024 },
+        { instanceId: 'gone2', bytes: 2048 },
+      ],
+      deletedTotalBytes: 3072,
+    });
+    const panel = await screen.findByRole('region', { name: 'Deleted installations' });
+    expect(within(panel).getByText(/^1 backup; deleting it frees \u20681\.0 KiB/)).toBeVisible();
+    expect(within(panel).getByText(/^1 backup; deleting it frees \u20682\.0 KiB/)).toBeVisible();
+    expect(panel.querySelectorAll('dd')).toHaveLength(2);
+    expect(within(panel).queryByText('All deleted installations')).toBeNull();
+  });
+
+  it('gives no total that counts an installation brought back since', async () => {
+    const back = instanceFixture({ id: 'gone3', displayName: 'Test' });
+    setup(
+      {
+        ...oneWorld,
+        backups: [
+          backup({ id: 'a', instanceId: 'gone', instanceName: 'Old modpack' }),
+          backup({ id: 'b', instanceId: 'gone2', instanceName: 'Creative' }),
+          backup({ id: 'c', instanceId: 'gone3', instanceName: 'Test' }),
+        ],
+        // Counted while "Test" was still deleted.
+        deletedBytes: [
+          { instanceId: 'gone', bytes: 1024 },
+          { instanceId: 'gone2', bytes: 2048 },
+          { instanceId: 'gone3', bytes: 4096 },
+        ],
+        deletedTotalBytes: 7168,
+      },
+      {},
+      shown({ instances: [instance, back] }),
+    );
+    const panel = await screen.findByRole('region', { name: 'Deleted installations' });
+    await within(panel).findByText(/^1 backup; deleting it frees \u20682\.0 KiB/);
+    expect(panel.querySelectorAll('dd')).toHaveLength(2);
+    expect(within(panel).queryByText('All deleted installations')).toBeNull();
+  });
+
+  it('says "it" in Russian only for a single backup, not for 21', async () => {
+    setLanguage(await loadLanguage('ru'));
+    const space = (count: number) => strings.backups.deletedSpace({ count, size: '1 МиБ' });
+    expect(space(1)).toBe('1 копия; её удаление освободит 1 МиБ');
+    expect(space(21)).toBe('21 копия; удаление всех освободит 1 МиБ');
+    expect(space(3)).toBe('3 копии; удаление всех освободит 1 МиБ');
+    expect(space(5)).toBe('5 копий; удаление всех освободит 1 МиБ');
   });
 
   it('brings back a deleted installation from its backup', async () => {
@@ -482,6 +634,8 @@ describe('BackupsView', () => {
       ],
       worlds: [],
       storeBytes: 0,
+      deletedBytes: [],
+      deletedTotalBytes: 0,
     });
     expect(await screen.findByRole('heading', { name: 'Deleted installations' })).toBeVisible();
     expect(screen.getByText('Before deleting')).toBeVisible();
