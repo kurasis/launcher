@@ -1760,6 +1760,8 @@ export type Messages = {
     readonly deletedHint: string;
     readonly bringBack: string;
     readonly broughtBack: (values: { name: string | number }) => string;
+    readonly keepRange: (values: { max: number }) => string;
+    readonly loading: string;
   };
   readonly gallery: {
     readonly title: string;
