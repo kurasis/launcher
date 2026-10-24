@@ -280,3 +280,155 @@
     animation: none;
   }
 }
+
+/* The Installed tab in concept A (D-072): the modpack the installation came from, the
+   toolbar, then each folder's files as rows in a panel. Logical properties only. */
+.installed {
+  display: grid;
+  gap: var(--space-4);
+  min-inline-size: 0;
+}
+
+.packCard {
+  display: grid;
+  grid-template-columns: 2.75rem minmax(0, 1fr) auto;
+  gap: 0.125rem var(--space-3);
+  align-items: center;
+  padding: 0.625rem var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+}
+
+/* The rows share the list's columns (icon, name, switch, buttons), so the switches and
+   the buttons line up from row to row. The edge columns size to their content, so they
+   take in the rows' padding; the list's negative margin lines the icons up with the
+   panel's title. */
+.items {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  gap: var(--space-1) var(--space-3);
+  margin: 0 calc(-1 * var(--space-3));
+  padding: 0;
+  list-style: none;
+}
+
+.item {
+  display: grid;
+  grid-column: 1 / -1;
+  grid-template-columns: subgrid;
+  row-gap: 0.125rem;
+  align-items: center;
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-md);
+}
+
+.item:hover {
+  background: var(--color-hover);
+}
+
+.packIcon,
+.itemIcon {
+  grid-row: 1 / span 2;
+  inline-size: 2.25rem;
+  block-size: 2.25rem;
+  border-radius: var(--radius-sm);
+  object-fit: cover;
+}
+
+.packIcon {
+  inline-size: 2.75rem;
+  block-size: 2.75rem;
+}
+
+.itemName {
+  display: flex;
+  flex-wrap: wrap;
+  grid-column: 2;
+  align-items: center;
+  gap: var(--space-1) var(--space-2);
+  min-inline-size: 0;
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.itemVersion {
+  color: var(--color-text-muted);
+  font-weight: 400;
+}
+
+.itemMeta {
+  grid-column: 2;
+  min-inline-size: 0;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+  overflow-wrap: anywhere;
+}
+
+/* The switch and the buttons: cells of the row while there is room beside the name. */
+.itemControls {
+  display: contents;
+}
+
+.itemSwitch {
+  grid-column: 3;
+  grid-row: 1 / span 2;
+}
+
+.itemActions {
+  display: flex;
+  flex-wrap: wrap;
+  grid-column: -2;
+  grid-row: 1 / span 2;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-2);
+}
+
+/* "Checking what needs it…" and the question, under the name. */
+.itemWide {
+  grid-column: 2 / -1;
+  margin: var(--space-1) 0 0;
+}
+
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.toolbarStatus {
+  margin: 0;
+  margin-inline-start: auto;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+}
+
+/* Without room beside the name, the switch and the buttons go under it, in one line. */
+@container catalog (max-width: 46rem) {
+  .items {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .itemControls {
+    display: flex;
+    flex-wrap: wrap;
+    grid-column: 2;
+    align-items: center;
+    gap: var(--space-2);
+  }
+
+  .itemSwitch,
+  .itemControls .itemActions,
+  .packCard .itemActions {
+    grid-column: auto;
+    grid-row: auto;
+    justify-content: flex-start;
+  }
+
+  .packCard .itemActions {
+    grid-column: 2 / -1;
+  }
+}
