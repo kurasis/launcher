@@ -7,8 +7,9 @@ import styles from './InstallationSelect.module.css';
 interface Props {
   id: string;
   label: string;
-  /** The first choice, for no installation in particular ("None", "All installations"). */
-  none: string;
+  /** The first choice, for no installation in particular ("None", "All installations");
+   * without it one installation is always chosen. */
+  none?: string | undefined;
   instances: readonly InstanceSummary[];
   value: string | null;
   onChange: (instanceId: string | null) => void;
@@ -41,7 +42,7 @@ export function InstallationSelect({
           onChange(event.target.value === '' ? null : event.target.value);
         }}
       >
-        <option value="">{none}</option>
+        {none !== undefined && <option value="">{none}</option>}
         {instances.map((i) => (
           <option key={i.id} value={i.id}>
             {i.displayName} ({gameLabel(i)})

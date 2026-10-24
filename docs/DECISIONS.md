@@ -3262,6 +3262,14 @@ skins-mod <channel>` there only checks the signature against the public key and
   focus stays in it and goes back to the thumbnail of the shot shown last; a delete is
   asked in place. Short dates ("Today, 19:40", "3 October") come from one helper for
   every screen.
+- **Backups:** the installation is chosen in the screen's head, above both columns; the
+  settings and the worlds to back up sit in a narrow column, the backups of the
+  installation and of deleted installations beside it. Rows on the panel ground, the
+  reason as a tag, Delete as a quiet button; Restore and Delete ask in place. "Restore as
+  a copy" stays for worlds only, as the core restores a whole installation only in its
+  place. The number of backups kept is checked (1 to 100) before anything is sent. While
+  the screen's own backup runs its buttons keep the focus; a game or another operation
+  disables them.
 - **Order:** tokens and shell, then Installations and the launch bar, the new
   installation form, the feed, the catalog, the mod page and the remaining screens, each
   in its own pull request. Features the new screens need from a service go to the thread

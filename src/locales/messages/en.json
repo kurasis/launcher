@@ -1621,7 +1621,7 @@
     },
     "backups": {
       "title": "Backups",
-      "hint": "A backup stores each file once: a new backup only adds what changed since earlier ones. Back up single worlds or the whole installation. Game files that Repair can download again are not included.",
+      "hint": "A backup stores each file once: a new backup only adds what changed since earlier ones. Game files that Repair can download again are not included.",
       "storage": "Backups use {size}",
       "afterPlay": "Back up changed worlds after playing",
       "afterPlayHint": "When a game session ends, every world it changed is backed up automatically.",
@@ -1647,7 +1647,7 @@
         "before_delete": "Before deleting",
         "before_update": "Before a modpack update"
       },
-      "size": "{files, number} files · {total} · {added} new",
+      "size": "{files, plural, one {# file} other {# files}} · {total} · {added} new",
       "restore": "Restore",
       "restoreCopy": "Restore as a copy",
       "delete": "Delete",
@@ -1662,7 +1662,9 @@
       "deletedTitle": "Deleted installations",
       "deletedHint": "Backups of installations that were deleted. A backup of a whole installation brings it back with its worlds, mods and settings; then install it to play.",
       "bringBack": "Bring back",
-      "broughtBack": "\"{name}\" is back. Install it to play."
+      "broughtBack": "\"{name}\" is back. Install it to play.",
+      "keepRange": "Enter a whole number from 1 to {max, number}.",
+      "loading": "Looking for backups…"
     },
     "gallery": {
       "title": "Screenshots",
