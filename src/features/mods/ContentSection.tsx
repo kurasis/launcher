@@ -14,6 +14,7 @@ import type {
   ContentUpdate,
   ContentView,
   InstanceSummary,
+  ModsFolderCheck,
   ModsNeededBy,
   ModsVersion,
 } from '../../lib/contracts';
@@ -26,6 +27,7 @@ import { ExportDialog } from './ExportDialog';
 import { PublishDialog } from './PublishDialog';
 import { isolate, packArchive } from './helpers';
 import { PackDialog } from './PackDialog';
+import { Problems } from './Problems';
 import catalog from './Catalog.module.css';
 import styles from './Mods.module.css';
 
@@ -33,6 +35,10 @@ const FOLDERS = ['mods', 'resourcepacks', 'shaderpacks', 'datapacks'] as const;
 
 /** A file's row stays while it is turned off or on (its path gains or loses ".disabled"). */
 const rowName = (item: ContentItem) => JSON.stringify([item.world, item.folder, item.name]);
+
+/** A path as when the file is on: an offer or a name found for a file follows it when it is turned off or on. */
+const onPath = (path: string) =>
+  path.endsWith('.disabled') ? path.slice(0, -'.disabled'.length) : path;
 
 /** Where an update stands while "Update all" runs. */
 interface Batch {
@@ -54,6 +60,7 @@ function Row({
   item,
   update,
   known,
+  ownVersion,
   waiting,
   pending,
   onCheck,
@@ -65,6 +72,8 @@ function Row({
   item: ContentItem;
   update: ContentUpdate | undefined;
   known: ContentIdentified | undefined;
+  /** The version a jar the launcher did not install gives itself. */
+  ownVersion: string | undefined;
   /** Something else holds the installation (the game runs, it installs): nothing changes. */
   waiting: boolean;
   /** A change on this tab goes: the controls wait for it but keep the focus. */
@@ -132,8 +141,10 @@ function Row({
   // A file the launcher did not install (a modpack's, the player's) is
   // named as the catalog shows it.
   const title = item.title ?? known?.title ?? item.name;
-  const versionNumber = item.versionNumber ?? known?.versionNumber ?? null;
+  // One the catalog does not know says its own version.
+  const versionNumber = item.versionNumber ?? known?.versionNumber ?? ownVersion ?? null;
   const project = item.projectId ?? known?.projectId ?? null;
+  const source = item.source ?? known?.source ?? null;
   return (
     <li className={styles.item}>
       <ProjectIcon
@@ -155,6 +166,7 @@ function Row({
         )}
       </span>
       <span className={styles.itemMeta}>
+        {source !== null && `${isolate(strings.mods.sources[source])} · `}
         <bdi dir="ltr">{item.path}</bdi>
         {/* "1.3 MiB" stays whole in Arabic. */}
         {!item.directory && ` · ${isolate(formatBytes(item.size))}`}
@@ -279,21 +291,23 @@ export function ContentSection({ instance, onOpen, onUpdate, revision }: Props) 
   const [view, setView] = useState<ContentView | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [working, setWorking] = useState(false);
-  // Offers and recognized files for the folder as it was at `revision`.
+  // Offers for the folder as it was at `revision`: a file turned off or on keeps its
+  // offer, one removed takes it away.
   const [checked, setChecked] = useState<{
     revision: number;
     updates: ContentUpdate[];
-    known: ContentIdentified[];
     /** A newer version of the modpack the installation was made from. */
     pack: ModsVersion | null;
   } | null>(null);
   // What the catalog recognized at the last look at the folder, so a
   // modpack's files show their titles and icons without a check.
   const [named, setNamed] = useState<{ id: string; known: ContentIdentified[] } | null>(null);
-  const updates = checked?.revision === revision ? checked.updates : null;
-  const known =
-    checked?.revision === revision ? checked.known : named?.id === id ? named.known : [];
+  const known = named?.id === id ? named.known : [];
   const packOffer = checked?.revision === revision ? checked.pack : null;
+  // What the mods' jars say, read after the list: it never holds the list up.
+  const [jars, setJars] = useState<({ id: string } & ModsFolderCheck) | null>(null);
+  const jarsAsked = useRef(0);
+  const read = jars?.id === id ? jars : null;
   const [checking, setChecking] = useState(false);
   const [batch, setBatch] = useState<Batch | null>(null);
   const [updatingPack, setUpdatingPack] = useState<ModsVersion | null>(null);
@@ -338,6 +352,15 @@ export function ContentSection({ instance, onOpen, onUpdate, revision }: Props) 
           setNamed({ id, known });
         })
         .catch(() => undefined);
+      // Only the last answer counts: a toggle asks again before the one before is back.
+      const asked = ++jarsAsked.current;
+      void ipc
+        .modsFolderCheck(id)
+        .then((found) => {
+          if (asked !== jarsAsked.current || !found) return;
+          setJars({ id, problems: found.problems, versions: found.versions });
+        })
+        .catch(() => undefined);
     },
     [id],
   );
@@ -354,10 +377,6 @@ export function ContentSection({ instance, onOpen, onUpdate, revision }: Props) 
     setError(null);
     setBatch(null);
     action
-      .then(() => {
-        // Paths change when a file is turned off; check again for offers.
-        setChecked(null);
-      })
       .catch((e: unknown) => {
         setError(describeIpcError(e));
       })
@@ -390,9 +409,9 @@ export function ContentSection({ instance, onOpen, onUpdate, revision }: Props) 
         setChecked({
           revision,
           updates: offers.filter((o) => !own.has(o.path)),
-          known: identified,
           pack: newer,
         });
+        setNamed({ id, known: identified });
       })
       .catch((e: unknown) => {
         setError(describeIpcError(e));
@@ -440,8 +459,20 @@ export function ContentSection({ instance, onOpen, onUpdate, revision }: Props) 
   const waiting = instance.busy;
   const own = working || updatingAll;
   const items = view?.items ?? [];
+  // Each offer for a file still there, at its path now.
+  const offered = new Map(
+    (checked?.revision === revision ? checked.updates : []).map((u) => [onPath(u.path), u]),
+  );
+  const updates =
+    checked?.revision === revision
+      ? items.flatMap((item) => {
+          const offer = offered.get(onPath(item.path));
+          return offer === undefined ? [] : [{ ...offer, path: item.path }];
+        })
+      : null;
   const byPath = new Map((updates ?? []).map((u) => [u.path, u]));
-  const knownByPath = new Map(known.map((k) => [k.path, k]));
+  const knownByPath = new Map(known.map((k) => [onPath(k.path), k]));
+  const ownVersions = new Map((read?.versions ?? []).map((v) => [onPath(v.path), v.version]));
   // One line at the toolbar's end says what the last check or "Update all" found. It
   // stays the same element, so each new answer is read out.
   const batchText =
@@ -469,7 +500,7 @@ export function ContentSection({ instance, onOpen, onUpdate, revision }: Props) 
   // What had the focus went (a removed row or warning, Update all once nothing is left
   // to update): it goes to Check for updates.
   useFocusBack(landed, checkButton);
-  useFocusBack(updates, checkButton);
+  useFocusBack(checked?.revision === revision ? checked.updates : null, checkButton);
   const rowNames = new Map<string, number>();
   for (const item of items) rowNames.set(rowName(item), (rowNames.get(rowName(item)) ?? 0) + 1);
   // Two files that share a name (one of them put there by hand) keep their own rows.
@@ -506,6 +537,7 @@ export function ContentSection({ instance, onOpen, onUpdate, revision }: Props) 
           </ul>
         </Notice>
       )}
+      {read !== null && <Problems problems={read.problems} />}
       {pack !== null && (
         <div className={styles.packCard}>
           <ProjectIcon
@@ -627,7 +659,8 @@ export function ContentSection({ instance, onOpen, onUpdate, revision }: Props) 
                     key={rowKey(item)}
                     item={item}
                     update={byPath.get(item.path)}
-                    known={knownByPath.get(item.path)}
+                    known={knownByPath.get(onPath(item.path))}
+                    ownVersion={ownVersions.get(onPath(item.path))}
                     waiting={waiting}
                     pending={own}
                     onOpen={onOpen}

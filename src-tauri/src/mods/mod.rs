@@ -280,7 +280,7 @@ fn kind(text: &str) -> Option<String> {
     KINDS.contains(&text).then(|| text.to_owned())
 }
 
-fn sha256(text: Option<&str>) -> Option<String> {
+pub(crate) fn sha256(text: Option<&str>) -> Option<String> {
     text.filter(|h| h.len() == 64 && h.bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f')))
         .map(str::to_owned)
 }
@@ -557,6 +557,8 @@ pub struct Version {
     pub files: Vec<VersionFile>,
     pub dependencies: Vec<Dependency>,
     pub gone_at: Option<i64>,
+    /// Where the catalog took it from: `modrinth`, `curseforge`, `own`...
+    pub source: Option<String>,
 }
 
 impl Version {
@@ -653,6 +655,7 @@ impl Version {
                 })
                 .collect(),
             gone_at: value["goneAt"].as_i64(),
+            source: known_source(&value["source"]),
         })
     }
 
@@ -774,6 +777,8 @@ pub struct Found {
     pub title: Option<String>,
     pub icon: Option<String>,
     pub version_number: Option<String>,
+    /// Where the catalog took the version from.
+    pub source: Option<String>,
 }
 
 impl Found {
@@ -795,8 +800,18 @@ impl Found {
                 .as_str()
                 .map(|n| line(n, 128))
                 .filter(|n| !n.is_empty()),
+            source: known_source(&f["source"]),
         })
     }
+}
+
+/// One of the sources the catalog names, else none.
+fn known_source(value: &Value) -> Option<String> {
+    value.as_str().filter(|s| is_source(s)).map(str::to_owned)
+}
+
+pub(crate) fn is_source(word: &str) -> bool {
+    SOURCES.contains(&word)
 }
 
 /// A search as the interface asks it.

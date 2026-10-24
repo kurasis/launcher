@@ -2443,14 +2443,31 @@ pub async fn mods_check<R: Runtime>(
     app: AppHandle<R>,
     instance_id: crate::storage::paths::InstanceId,
 ) -> LauncherResult<Vec<crate::mods::content::SetProblem>> {
+    Ok(read_mods_folder(&app, instance_id).await?.problems)
+}
+
+/// The same for the list of an installation's files, with the version each
+/// jar the launcher did not install gives itself.
+#[tauri::command]
+pub async fn mods_folder_check<R: Runtime>(
+    app: AppHandle<R>,
+    instance_id: crate::storage::paths::InstanceId,
+) -> LauncherResult<crate::mods::content::FolderCheck> {
+    read_mods_folder(&app, instance_id).await
+}
+
+async fn read_mods_folder<R: Runtime>(
+    app: &AppHandle<R>,
+    instance_id: crate::storage::paths::InstanceId,
+) -> LauncherResult<crate::mods::content::FolderCheck> {
     use crate::mods::content;
     let (root, instance) = content::instance_of(&app.state::<AppState>(), instance_id)?;
     let target = content::Target::of(&instance);
     if target.setup().is_none() {
-        return Ok(Vec::new());
+        return Ok(content::FolderCheck::default());
     }
     let lock = content::load_lock(&root, instance_id);
-    let mods = mods(&app);
+    let mods = mods(app);
     // The catalog's list of clashes when it answers quickly; else the one last
     // read, so a launch never waits on the network.
     let clashes = if crate::mods::online(&app.state::<AppState>()).is_ok() {
@@ -2471,7 +2488,10 @@ pub async fn mods_check<R: Runtime>(
                 crate::error::LauncherError::internal("A file operation stopped unexpectedly.")
             })?
     };
-    Ok(content::check_folder(&target, &lock, &local, &clashes))
+    Ok(content::FolderCheck {
+        problems: content::check_folder(&target, &lock, &local, &clashes),
+        versions: content::own_versions(&lock, &local),
+    })
 }
 
 /// How long the check before a launch waits for the catalog's list of clashes.
@@ -3406,7 +3426,8 @@ pub async fn mods_harmful<R: Runtime>(
     .await
 }
 
-/// The player's own files the catalog recognizes by their hash.
+/// The player's own files the catalog recognizes by their hash, and where
+/// the launcher's own came from when its lock does not say.
 #[tauri::command]
 pub async fn mods_identify<R: Runtime>(
     app: AppHandle<R>,
@@ -3418,7 +3439,10 @@ pub async fn mods_identify<R: Runtime>(
         let mods = Arc::clone(&mods);
         blocking(app, move |state| {
             let (root, _) = crate::mods::content::instance_of(state, instance_id)?;
-            Ok(mods.content.unknown_files(&root, instance_id))
+            // And where older installs of the launcher's came from.
+            let mut files = mods.content.unknown_files(&root, instance_id);
+            files.extend(crate::mods::content::unsourced_files(&root, instance_id));
+            Ok(files)
         })
         .await?
     };

@@ -415,10 +415,12 @@ fn versions_keep_only_files_the_catalog_serves() {
                 {"kind": "optional", "source": "curseforge", "sourceProject": "238222"},
             ],
             "changelog": "x",
+            "source": "evil<b>",
         }),
         false,
     )
     .unwrap();
+    assert_eq!(version.source, None);
     assert_eq!(version.channel, "release");
     assert_eq!(version.games, ["1.21.1"]);
     assert_eq!(version.loaders, ["fabric"]);
@@ -788,6 +790,7 @@ impl Catalog for Fake {
                         title: self.projects.get(&v.project_id).map(|p| p.title.clone()),
                         icon: None,
                         version_number: Some(v.number.clone()),
+                        source: v.source.clone(),
                     })
                 })
             })
@@ -826,6 +829,7 @@ fn locked(path: &str, project: u8, version: u8) -> LockedItem {
         dependency: false,
         requires: None,
         installed_at: 0,
+        source: None,
     }
 }
 
@@ -1191,6 +1195,7 @@ async fn a_mod_there_already_too_old_for_a_new_one_is_updated() {
         title: None,
         icon: None,
         version_number: None,
+        source: None,
     }];
     let plan = content::checked_plan(
         &fake,
@@ -1354,6 +1359,7 @@ async fn a_mod_the_game_needs_is_found_to_put_in_or_update() {
         title: None,
         icon: None,
         version_number: None,
+        source: None,
     }];
     let found = fix(empty.clone(), local.clone(), identified).await.unwrap();
     assert_eq!(found.replaces.as_deref(), Some("mods/sodium-0.5.jar"));
@@ -1457,6 +1463,41 @@ fn a_folder_is_checked_before_a_launch() {
         ..fabric()
     };
     assert!(content::check_folder(&vanilla, &lock, &local, &[]).is_empty());
+}
+
+#[test]
+fn jars_the_launcher_did_not_install_give_their_own_version() {
+    let jar = |path: &str, manifests: Value| content::LocalJar {
+        path: path.to_owned(),
+        manifests: serde_json::from_value(manifests).unwrap(),
+    };
+    let local = [
+        jar("mods/mine.jar", fabric_jar("mine", "2.4.1", &[])),
+        jar("mods/off.jar.disabled", fabric_jar("off", "1.0", &[])),
+        // The launcher's: its version is the catalog's.
+        jar("mods/library.jar", fabric_jar("library", "1.5", &[])),
+        // Only a mod inside it, or none at all: no version of its own.
+        jar(
+            "mods/bundle.jar",
+            json!([{"loader": "fabric", "mods": [{"id": "inner", "version": "3", "nested": true}]}]),
+        ),
+        jar(
+            "mods/bare.jar",
+            json!([{"loader": "fabric", "mods": [{"id": "bare"}]}]),
+        ),
+        jar("mods/notes.zip", json!([])),
+    ];
+    let mut lock = ContentLock::default();
+    lock.items.push(locked("mods/library.jar", 5, 50));
+    let found = content::own_versions(&lock, &local);
+    let versions: Vec<(&str, &str)> = found
+        .iter()
+        .map(|v| (v.path.as_str(), v.version.as_str()))
+        .collect();
+    assert_eq!(
+        versions,
+        [("mods/mine.jar", "2.4.1"), ("mods/off.jar.disabled", "1.0")]
+    );
 }
 
 #[test]
@@ -1976,9 +2017,14 @@ fn the_content_view_lists_only_content() {
     touch(&game, "resourcepacks/pack.zip");
     fs::create_dir_all(game.join("shaderpacks/BSL")).unwrap();
     fs::create_dir_all(game.join("saves/World")).unwrap();
+    // A lock edited by hand: a source the catalog does not name, a broken hash.
+    let mut b = locked("mods/b.jar", 1, 10);
+    b.source = Some("<evil>".to_owned());
+    let mut pack = locked("resourcepacks/pack.zip", 2, 20);
+    pack.sha256 = "../../x".to_owned();
     let lock = ContentLock {
         schema_version: 1,
-        items: vec![locked("mods/b.jar", 1, 10)],
+        items: vec![b, pack],
         pack: None,
         published: None,
     };
@@ -1989,6 +2035,11 @@ fn the_content_view_lists_only_content() {
     )
     .unwrap();
     let view = content::list(&root, id);
+    assert!(view.items.iter().all(|i| i.source.is_none()));
+    assert_eq!(
+        content::unsourced_files(&root, id),
+        [("mods/b.jar.disabled".to_owned(), hash(10))]
+    );
     let paths: Vec<&str> = view.items.iter().map(|i| i.path.as_str()).collect();
     assert_eq!(
         paths,
@@ -2128,6 +2179,7 @@ fn known(path: &str, project: u8, version: u8) -> content::Identified {
         title: None,
         icon: None,
         version_number: None,
+        source: None,
     }
 }
 
@@ -2225,9 +2277,10 @@ async fn an_install_turns_on_what_it_needs() {
         10,
         1,
         "a.jar",
-        json!({"dependencies": [{"kind": "required", "projectId": id(2)}]}),
+        json!({"dependencies": [{"kind": "required", "projectId": id(2)}],
+               "source": "modrinth"}),
     );
-    fake.add_version(20, 2, "lib.jar", json!({}));
+    fake.add_version(20, 2, "lib.jar", json!({"source": "curseforge"}));
     let (_dir, root, instance_id) = instance();
     let game = root.game_dir(instance_id);
     // The chosen file is there already, so nothing is downloaded.
@@ -2241,6 +2294,14 @@ async fn an_install_turns_on_what_it_needs() {
     };
     lock.items[1].dependency = true;
     content::save_lock(&root, instance_id, &lock).unwrap();
+    // Installed before the lock noted sources: asked by their SHA-256.
+    assert_eq!(
+        content::unsourced_files(&root, instance_id),
+        [
+            ("mods/a.jar".to_owned(), hash(10)),
+            ("mods/lib.jar.disabled".to_owned(), hash(20))
+        ]
+    );
     let plan = content::plan(&fake, &game, &fabric(), &lock, &wanted(&chosen), &[])
         .await
         .unwrap();
@@ -2263,6 +2324,24 @@ async fn an_install_turns_on_what_it_needs() {
     let lock = content::load_lock(&root, instance_id);
     let a = lock.items.iter().find(|i| i.path == "mods/a.jar").unwrap();
     assert_eq!(a.requires.as_deref(), Some(&[id(2)][..]));
+    // And where the version it installed came from, for the list; the library
+    // was only turned on, so the catalog is still asked about it.
+    let sources: Vec<(String, Option<String>)> = content::list(&root, instance_id)
+        .items
+        .into_iter()
+        .map(|i| (i.path, i.source))
+        .collect();
+    assert_eq!(
+        sources,
+        [
+            ("mods/a.jar".to_owned(), Some("modrinth".to_owned())),
+            ("mods/lib.jar".to_owned(), None)
+        ]
+    );
+    assert_eq!(
+        content::unsourced_files(&root, instance_id),
+        [("mods/lib.jar".to_owned(), hash(20))]
+    );
 }
 
 #[tokio::test]

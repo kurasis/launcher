@@ -1535,6 +1535,8 @@ export interface ModsVersion {
     sourcePage: string | null;
   }[];
   goneAt: number | null;
+  /** Where the catalog took it from. */
+  source: ModsSource | null;
 }
 
 /** How many projects a search finds in one category of the shared list. */
@@ -1672,6 +1674,13 @@ export interface ModsSetProblem {
   loader: 'fabric' | 'quilt' | 'forge' | 'neoforge' | null;
 }
 
+/** What the jars of an installation's mods folder say, for its list. */
+export interface ModsFolderCheck {
+  problems: ModsSetProblem[];
+  /** The version each jar the launcher did not install gives itself. */
+  versions: { path: string; version: string }[];
+}
+
 /** Which mods need one about to be turned off or removed. */
 export interface ModsNeededBy {
   neededBy: string[];
@@ -1783,6 +1792,8 @@ export interface ContentItem {
   versionNumber: string | null;
   icon: string | null;
   dependency: boolean;
+  /** Where the catalog took its version from, when the launcher installed it. */
+  source: ModsSource | null;
   /** The modpack the installation was made from brought it. */
   fromPack: boolean;
 }
@@ -1911,6 +1922,7 @@ export interface ContentIdentified {
   title: string | null;
   icon: string | null;
   versionNumber: string | null;
+  source: ModsSource | null;
 }
 
 export interface ContentUpdate {

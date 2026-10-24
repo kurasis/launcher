@@ -110,6 +110,7 @@ const version: ModsVersion = {
   ],
   dependencies: [],
   goneAt: null,
+  source: null,
 };
 
 const plan: ModsPlan = {
@@ -157,6 +158,7 @@ const content: ContentView = {
       versionNumber: '0.6.0',
       icon: null,
       dependency: false,
+      source: null,
       fromPack: false,
     },
     {
@@ -173,6 +175,7 @@ const content: ContentView = {
       versionNumber: null,
       icon: null,
       dependency: false,
+      source: null,
       fromPack: false,
     },
   ],
@@ -786,6 +789,92 @@ describe('ModsView', () => {
     const mods = await screen.findByRole('region', { name: /^Mods \d/ });
     expect(within(mods).getByText('mine.jar')).toBeVisible();
     expect(screen.queryByRole('alert')).toBeNull();
+  });
+
+  it('says where a file came from, the version a file by hand gives itself, and what the jars say', async () => {
+    const calls = setup(
+      {
+        mods_content: () => ({
+          ...content,
+          items: content.items.map((i, n) => (n === 0 ? { ...i, source: 'modrinth' } : i)),
+        }),
+        mods_folder_check: () => ({
+          problems: [
+            {
+              kind: 'missing',
+              titles: ['mine.jar'],
+              id: 'cloth-config',
+              versions: [],
+              found: null,
+              from: null,
+              loader: null,
+            },
+          ],
+          versions: [{ path: 'mods/mine.jar.disabled', version: '2.4.1' }],
+        }),
+      },
+      'installed',
+    );
+    const mods = await screen.findByRole('region', { name: /^Mods \d/ });
+    expect(
+      within(mods).getByText(
+        (_, element) =>
+          element?.tagName === 'SPAN' &&
+          element.textContent.startsWith('\u2068Modrinth\u2069 · mods/sodium.jar'),
+      ),
+    ).toBeVisible();
+    expect(await within(mods).findByText('2.4.1')).toBeVisible();
+    // The catalog's own version wins over the jar's.
+    expect(within(mods).getByText('0.6.0')).toBeVisible();
+    expect(
+      screen.getByText('The mods’ own files say the game may not start with this:'),
+    ).toBeVisible();
+    expect(screen.getByText(/mine\.jar.* needs .*cloth-config/)).toBeVisible();
+    expect(named('mods_folder_check', calls)[0]?.args).toEqual({ instanceId: fabric.id });
+  });
+
+  it('keeps the offers when a file is turned off, at its new path', async () => {
+    let off = false;
+    const calls = setup(
+      {
+        mods_content: () => ({
+          ...content,
+          items: content.items.map((i, n) =>
+            n === 0 && off ? { ...i, path: 'mods/sodium.jar.disabled', enabled: false } : i,
+          ),
+        }),
+        mods_set_enabled: () => {
+          off = true;
+          return null;
+        },
+        mods_updates: () => [
+          {
+            path: 'mods/sodium.jar',
+            projectId: PROJECT,
+            fromVersionId: VERSION,
+            toVersionId: '00000000-0000-4000-8000-000000000011',
+            toNumber: '0.6.1',
+          },
+        ],
+      },
+      'installed',
+    );
+    fireEvent.click(await screen.findByRole('button', { name: 'Check for updates' }));
+    expect(await screen.findByText('Update: \u20680.6.1\u2069')).toBeVisible();
+    const mods = screen.getByRole('region', { name: /^Mods \d/ });
+    fireEvent.click(within(mods).getByRole('switch', { name: '\u2068Sodium\u2069 is on' }));
+    await waitFor(() => {
+      expect(within(mods).getAllByText('Off')).toHaveLength(2);
+    });
+    expect(screen.getByText('Update: \u20680.6.1\u2069')).toBeVisible();
+    expect(named('mods_updates', calls)).toHaveLength(1);
+    fireEvent.click(within(mods).getByRole('button', { name: 'Update' }));
+    await waitFor(() => {
+      expect(named('mods_plan', calls)).toHaveLength(1);
+    });
+    expect(named('mods_plan', calls)[0]?.args.payload).toMatchObject({
+      replaces: 'mods/sodium.jar.disabled',
+    });
   });
 
   it('warns about files the catalog marks as malware and removes one', async () => {
@@ -2445,6 +2534,7 @@ describe('Project page', () => {
     versionNumber: null,
     icon: null,
     dependency: false,
+    source: null,
     fromPack: false,
   });
 

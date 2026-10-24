@@ -52,6 +52,7 @@ function contentItem(overrides: Partial<ContentItem>): ContentItem {
     versionNumber: null,
     icon: null,
     dependency: false,
+    source: null,
     fromPack: false,
     ...overrides,
   };

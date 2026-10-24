@@ -2534,6 +2534,15 @@ skins-mod <channel>` there only checks the signature against the public key and
   likeliest, up to three; one candidate alone that is already the project's number
   is not asked. The probe now also prints, for each candidate, which fields it has,
   where its number leads and whether the site lists files for it.
+- **The Installed tab's gaps (2026-10-24, D-072).** Each row says where its file came
+  from before the path ("Modrinth · mods/sodium.jar"): the catalog's lookup and versions
+  carry `source`, the lock keeps it at install, and files installed before that are
+  looked up by their SHA-256 with the player's own. A file the catalog does not know
+  shows the version its jar gives itself (its own mod, not one inside it) and no source.
+  The tab reads the jars after the list (`mods_folder_check`, never holding the list up;
+  only the last answer counts) and shows what may stop the set starting, as before a
+  launch. Offers from a check stay through a file turned off or on, at its new path; a
+  removed file takes its offer away, and an install or a pack update clears them.
 - **Name search.** A name asks both sources: Modrinth's search API and CurseForge's
   search page (its API search is refused). The page's hits are read from the App Router
   stream (objects with a numeric ID, a slug, a name and a class we keep, Minecraft
