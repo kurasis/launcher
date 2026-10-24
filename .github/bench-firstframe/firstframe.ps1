@@ -5,7 +5,7 @@
 # silhouette (the rail without text) or interface (the rail with text). The
 # details are white%, light ground%, dark ground% beside the rail, rail% and the
 # bright pixels in the rail.
-# Prints fixed words and numbers only; saves some frames as PNG. Windows PowerShell 5.1.
+# Prints fixed words and numbers only; saves some frames as PNG (Windows PowerShell 5.1).
 param(
   [Parameter(Mandatory)] [string] $Exe,
   [Parameter(Mandatory)] [string] $DataRoot,
