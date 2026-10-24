@@ -1510,7 +1510,10 @@
       },
       "windowTitle": "وحدة تحكم المشغّل",
       "logLabel": "مخرجات المشغّل واللعبة",
-      "keeps": "تحتفظ وحدة التحكم بأحدث {count, plural, zero {# سطر} one {سطر واحد} two {سطرين} few {# أسطر} many {# سطرًا} other {# سطر}}"
+      "keeps": "تحتفظ وحدة التحكم بأحدث {count, plural, zero {# سطر} one {سطر واحد} two {سطرين} few {# أسطر} many {# سطرًا} other {# سطر}}",
+      "gameStarting": "جارٍ تشغيل اللعبة",
+      "gameRunning": "اللعبة قيد التشغيل",
+      "gameRunningFor": "اللعبة قيد التشغيل منذ {duration}"
     },
     "diagnostics": {
       "recentTitle": "العمليات الأخيرة",

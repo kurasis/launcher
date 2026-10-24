@@ -1,7 +1,7 @@
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { mockIPC } from '@tauri-apps/api/mocks';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { ConsoleEntry, ConsolePage } from '../../lib/contracts';
+import type { ConsoleEntry, ConsolePage, ConsoleRun } from '../../lib/contracts';
 import { THEME_STORAGE_KEY } from '../../lib/theme';
 import { ConsoleApp } from './ConsoleApp';
 
@@ -132,6 +132,80 @@ describe('ConsoleApp', () => {
       window.dispatchEvent(new StorageEvent('storage', { key: THEME_STORAGE_KEY }));
     });
     expect(document.documentElement.dataset.theme).toBeUndefined();
+  });
+
+  it('says on the status line that a game runs and for how long', async () => {
+    let run: ConsoleRun | undefined = { state: 'preflight' };
+    let answers = true;
+    mockIPC((cmd, args) => {
+      if (cmd !== 'read_console') return null;
+      if (!answers) throw new Error('gone');
+      const page = firstPage((args as { after: number }).after, 0);
+      return run === undefined ? page : { ...page, run };
+    });
+    const writeText = vi.fn(() => Promise.resolve());
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
+    render(<ConsoleApp />);
+    const starting = await screen.findByText('Game starting');
+    // Shown, not read out: it changes while the game runs.
+    expect(starting.closest('[role],[aria-live]')).toBeNull();
+    const shows = async (state: ConsoleRun['state'], runningMs: number, text: string) => {
+      run = { state, runningMs };
+      expect(await screen.findByText(text)).toBeVisible();
+    };
+    // Whole minutes: 42 minutes 59 seconds is still 42 minutes.
+    await shows('running', 42 * 60_000 + 59_000, 'Game running for 42 minutes');
+    await shows('running', 65 * 60_000, 'Game running for 1 hour 5 minutes');
+    await shows('stopping', 30_000, 'Game running for less than a minute');
+    // A time that is not known or cannot be true is left out.
+    await shows('running', 2 * 60_000, 'Game running for 2 minutes');
+    run = { state: 'running' };
+    expect(await screen.findByText('Game running')).toBeVisible();
+    for (const junk of [-5, Number.NaN, Number.POSITIVE_INFINITY, 1e300]) {
+      await shows('running', 2 * 60_000, 'Game running for 2 minutes');
+      await shows('running', junk, 'Game running');
+    }
+
+    // It is not a journal line: Copy leaves it out and Clear keeps it.
+    fireEvent.click(screen.getByRole('button', { name: 'Copy' }));
+    await screen.findByRole('button', { name: 'Copied' });
+    const copied = String((writeText.mock.calls as unknown as string[][])[0]?.[0]);
+    expect(copied.split('\n')).toHaveLength(entries.length);
+    expect(copied).not.toMatch(/Game (running|starting)/);
+    fireEvent.click(screen.getByRole('button', { name: 'Clear' }));
+    expect(screen.getByText('Game running')).toBeVisible();
+
+    run = undefined;
+    await waitFor(() => {
+      expect(screen.queryByText(/^Game (running|starting)/)).toBeNull();
+    });
+    await shows('running', 60_000, 'Game running for 1 minute');
+    // Without an answer the window cannot know that the game still runs.
+    answers = false;
+    expect(await screen.findByRole('alert')).toHaveTextContent('does not answer');
+    expect(screen.queryByText(/^Game (running|starting)/)).toBeNull();
+  });
+
+  it('keeps the newest line in view when the status line changes', async () => {
+    // Changed by the test while the window polls.
+    const core: { run?: ConsoleRun } = {};
+    mockIPC((cmd, args) => {
+      if (cmd !== 'read_console') return null;
+      const page = firstPage((args as { after: number }).after, 0);
+      return core.run === undefined ? page : { ...page, run: core.run };
+    });
+    render(<ConsoleApp />);
+    const log = await screen.findByRole('log', { name: 'Launcher and game output' });
+    await within(log).findByText('Launcher 0.1.0 started');
+    // A taller status line makes the log shorter without a new line in it.
+    const pinned = vi.fn();
+    Object.defineProperty(log, 'scrollHeight', { configurable: true, get: () => 900 });
+    Object.defineProperty(log, 'scrollTop', { configurable: true, get: () => 0, set: pinned });
+    core.run = { state: 'running', runningMs: 60_000 };
+    await screen.findByText('Game running for 1 minute');
+    await waitFor(() => {
+      expect(pinned).toHaveBeenCalledWith(900);
+    });
   });
 
   it('says when the core does not answer', async () => {

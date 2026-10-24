@@ -235,7 +235,7 @@ export const ipc = {
   showMainWindow: (): Promise<void> => invoke('show_main_window'),
   /** Opens or focuses the console window (D-037). */
   openConsole: (): Promise<void> => invoke('open_console'),
-  /** Console entries after `after`; only the console window may call this. */
+  /** Console entries after `after` and the game that runs now; only the console window may call this. */
   readConsole: (after: number): Promise<ConsolePage> =>
     invoke<ConsolePage>('read_console', { after }),
   beginLogin: (requestId?: string): Promise<{ operationId: string }> =>

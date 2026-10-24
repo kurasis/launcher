@@ -11,6 +11,7 @@ pub mod ledger;
 
 use std::collections::{BTreeMap, VecDeque};
 use std::sync::{Mutex, MutexGuard, PoisonError};
+use std::time::Instant;
 
 use chrono::Utc;
 use serde::Serialize;
@@ -87,6 +88,9 @@ pub struct AppState {
     activity: ActivityRegistry,
     sink: Box<dyn EventSink>,
     console: Console,
+    /// The current game for the console window, kept in step with `current_run`
+    /// (D-072). Taken only on its own or inside `inner`, never the other way round.
+    game: Mutex<Option<GameMark>>,
 }
 
 impl AppState {
@@ -215,6 +219,7 @@ impl AppState {
             activity: ActivityRegistry::new(),
             sink,
             console: Console::default(),
+            game: Mutex::new(None),
         };
         state.log_startup();
         state
@@ -223,6 +228,21 @@ impl AppState {
     /// The console journal (D-037).
     pub fn console(&self) -> &Console {
         &self.console
+    }
+
+    /// The console journal after `after`, with the game that runs now (D-072). Never
+    /// waits on `inner`, which store writes hold, and takes one lock at a time.
+    pub fn read_console(&self, after: u64) -> ConsolePage {
+        let mark = *self.game.lock().unwrap_or_else(PoisonError::into_inner);
+        ConsolePage {
+            page: self.console.read(after),
+            run: mark.map(|mark| mark.at(Instant::now())),
+        }
+    }
+
+    fn mark_game(&self, next: impl FnOnce(Option<GameMark>) -> Option<GameMark>) {
+        let mut game = self.game.lock().unwrap_or_else(PoisonError::into_inner);
+        *game = next(*game);
     }
 
     fn log_startup(&self) {
@@ -511,6 +531,7 @@ impl AppState {
         ));
         self.publish(
             |data| {
+                self.mark_game(|_| GameMark::begin(&run, Instant::now(), Utc::now()));
                 data.current_run = Some(run);
                 true
             },
@@ -526,6 +547,7 @@ impl AppState {
                 Some(run) if run.run_id == run_id => {
                     let before = run.state;
                     update(run);
+                    self.mark_game(|before| GameMark::update(before, run, Instant::now()));
                     if run.state != before {
                         console.info(format!(
                             "Run {}: {}",
@@ -547,6 +569,7 @@ impl AppState {
             |data| match data.current_run.take() {
                 Some(mut run) if run.run_id == run_id => {
                     finish(&mut run);
+                    self.mark_game(|_| None);
                     log_run_end(&self.console, &run);
                     data.last_run = Some(run);
                     true

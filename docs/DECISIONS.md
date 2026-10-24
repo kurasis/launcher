@@ -792,7 +792,9 @@ message` plus a stack trace), with the event's level.
   packaged UI, which renders the console for that label. Its capability grants only
   `read_console`; the main window gains only `open_console`. The window polls
   `read_console(after)` every 300 ms. It stays open while the main window is unloaded
-  for a game; closing the main window without a running game closes it too.
+  for a game; closing the main window without a running game closes it too. Since
+  D-072 the same read also carries the game that runs now (its state and how long it
+  has run, nothing else), so the capability stays as it is.
 - **Not included (then):** the journal was not written to disk nor exported. Since
   D-061 it is also kept as `logs/launcher.log` and is part of the diagnostics export.
 
@@ -3257,7 +3259,14 @@ skins-mod <channel>` there only checks the signature against the public key and
   window keeps the theme in local storage for it, as it does the language (D-038). The
   source tags read "Launcher" and "Game" on screen and stay in capitals only in copied
   text; the time keeps its milliseconds; the status line says how many lines the console
-  keeps. The game's run time on that line waits for `read_console` to carry the run.
+  keeps and, while a game runs, for how long: "Game running for 42 minutes", in whole
+  minutes ("Game starting" before it spawns). `read_console` carries the game's state
+  and run time only, from a copy of the run kept beside the state so the poll never
+  waits on a store write. The time counts from the spawn by a steady clock, so setting
+  the system clock does not move it; a game found running after a restart counts from
+  its start on record, and shows no time when that start lies ahead of the clock. The
+  console floors the minutes where "Last played" rounds them, so it can be a minute
+  behind that.
 - **Screenshots:** a toolbar (hint, installation, Refresh, the count and size of what is
   shown), then one group per installation headed by its name and version, the shots in a
   grid with a short date and the size under each. The viewer is the shared dialog: the

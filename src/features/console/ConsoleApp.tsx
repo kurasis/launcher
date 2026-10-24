@@ -4,13 +4,15 @@ import { Choice } from '../../components/Choice';
 import { Icon } from '../../components/Icon';
 import { Notice } from '../../components/Notice';
 import { Segmented } from '../../components/Segmented';
+import { StateDot } from '../../components/StateDot';
 import forms from '../../components/forms.module.css';
-import type { ConsoleEntry } from '../../lib/contracts';
+import type { ConsoleEntry, ConsoleRun } from '../../lib/contracts';
 import { ipc } from '../../lib/ipc';
 import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow';
 import { direction, LANGUAGE_STORAGE_KEY, storedLanguage, strings } from '../../lib/strings';
 import { applyTheme, storedTheme, THEME_STORAGE_KEY } from '../../lib/theme';
 import { useLanguage } from '../../lib/useLanguage';
+import { formatDuration } from '../instances/lastRunLine';
 import styles from './ConsoleApp.module.css';
 
 const t = strings.console;
@@ -22,6 +24,9 @@ const KEEP = 10_000;
 const CORE_PAGE = 2_000;
 /** The longest filter text: it is matched against every kept line on each change. */
 const QUERY_MAX_LENGTH = 200;
+const MINUTE = 60_000;
+/** A longer run time says nothing true: the line leaves it out. */
+const LONGEST_RUN_MS = 1000 * 60 * MINUTE;
 
 type SourceFilter = 'all' | 'launcher' | 'game';
 type LevelFilter = 'all' | 'warn' | 'error';
@@ -37,11 +42,36 @@ function line(entry: ConsoleEntry): string {
   return `${time(entry.at)} ${t.sourceTag[entry.source]} ${entry.text}`;
 }
 
+/**
+ * The status line's word on the game the launcher runs now (D-072): "Game running for
+ * 42 minutes", in whole minutes so it never runs ahead of the clock.
+ */
+function gameLine(run: ConsoleRun | undefined): string | null {
+  if (run === undefined) return null;
+  switch (run.state) {
+    case 'preflight':
+    case 'spawning':
+      return t.gameStarting;
+    case 'running':
+    case 'stopping': {
+      const ms = run.runningMs;
+      if (typeof ms !== 'number' || !Number.isFinite(ms) || ms < 0 || ms > LONGEST_RUN_MS) {
+        return t.gameRunning;
+      }
+      return t.gameRunningFor({ duration: formatDuration(Math.floor(ms / MINUTE) * MINUTE) });
+    }
+    default:
+      return null;
+  }
+}
+
 /** The console window (D-037): launcher journal and game output, live. */
 export function ConsoleApp() {
   const [entries, setEntries] = useState<ConsoleEntry[]>([]);
   const [missed, setMissed] = useState(0);
   const [offline, setOffline] = useState(false);
+  // Kept as its words, so a read that changes nothing renders nothing.
+  const [game, setGame] = useState<string | null>(null);
   const [source, setSource] = useState<SourceFilter>('all');
   const [level, setLevel] = useState<LevelFilter>('all');
   const [query, setQuery] = useState('');
@@ -87,6 +117,7 @@ export function ConsoleApp() {
         if (stopped) return;
         after = page.lastSeq;
         setOffline(false);
+        setGame(gameLine(page.run));
         if (page.missed > 0) setMissed((m) => m + page.missed);
         if (page.entries.length > 0) {
           setEntries((previous) => {
@@ -96,7 +127,11 @@ export function ConsoleApp() {
         }
         if (page.entries.length >= CORE_PAGE) delay = 0;
       } catch {
-        if (!stopped) setOffline(true);
+        if (!stopped) {
+          setOffline(true);
+          // Without an answer the window cannot know that the game still runs.
+          setGame(null);
+        }
       }
       if (!stopped) timer = setTimeout(() => void tick(), delay);
     };
@@ -119,10 +154,12 @@ export function ConsoleApp() {
     [entries, source, level, needle],
   );
 
+  // The status line and the notices change the log's height without a new line: the
+  // newest line stays in view across those too.
   useEffect(() => {
     const element = list.current;
     if (follow && element !== null) element.scrollTop = element.scrollHeight;
-  }, [shown, follow]);
+  }, [shown, follow, game, offline, missed]);
 
   const copy = () => {
     void navigator.clipboard
@@ -262,6 +299,7 @@ export function ConsoleApp() {
       {/* Not a live region: the count changes on every read. */}
       <footer className={styles.status}>
         <span>{t.count({ shown: shown.length, total: entries.length })}</span>
+        {game !== null && <StateDot tone="busy" label={game} />}
         <span className={styles.keeps}>{t.keeps({ count: KEEP })}</span>
       </footer>
     </div>

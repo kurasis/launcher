@@ -4,6 +4,8 @@
 //! OAuth parameters, credential-vault contents or launch command lines; a test
 //! serializes a full snapshot and checks for secret-looking field names.
 
+use std::time::Instant;
+
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
@@ -541,6 +543,87 @@ pub struct RunSummary {
     /// the player may invite friends to.
     #[serde(default)]
     pub server: Option<String>,
+}
+
+/// The game the launcher runs now, as the console window's status line shows it
+/// (D-072): its state and how long it has run. Nothing about the player, the
+/// server or the output.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GameRun {
+    pub state: RunState,
+    /// Since the game started, by the core's steady clock; absent before it runs
+    /// or when its start is not known.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub running_ms: Option<u64>,
+}
+
+/// What a [`GameRun`] is made from. The state keeps it apart from the rest, so the
+/// console's poll never waits on a store write.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct GameMark {
+    state: RunState,
+    /// When the game first ran. A steady clock: setting the system clock does not
+    /// move it.
+    since: Option<Instant>,
+}
+
+impl GameMark {
+    /// The mark of a run that begins: `None` unless it is a game that has not
+    /// ended. A game found running after a restart counts from its start on record.
+    pub fn begin(run: &RunSummary, now: Instant, wall: DateTime<Utc>) -> Option<Self> {
+        Self::next(None, run, || {
+            let age = wall.signed_duration_since(run.started_at).to_std().ok()?;
+            now.checked_sub(age)
+        })
+    }
+
+    /// The mark after `run` changed: it counts from when the game first ran.
+    pub fn update(before: Option<Self>, run: &RunSummary, now: Instant) -> Option<Self> {
+        Self::next(before, run, || Some(now))
+    }
+
+    fn next(
+        before: Option<Self>,
+        run: &RunSummary,
+        start: impl FnOnce() -> Option<Instant>,
+    ) -> Option<Self> {
+        let runs = |state| matches!(state, RunState::Running | RunState::Stopping);
+        let starting = matches!(run.state, RunState::Preflight | RunState::Spawning);
+        if run.kind != RunKind::Game || !(starting || runs(run.state)) {
+            return None;
+        }
+        let since = match before {
+            Some(before) if runs(before.state) => before.since,
+            _ if runs(run.state) => start(),
+            _ => None,
+        };
+        Some(Self {
+            state: run.state,
+            since,
+        })
+    }
+
+    /// The run as it stands at `now`.
+    pub fn at(self, now: Instant) -> GameRun {
+        GameRun {
+            state: self.state,
+            running_ms: self.since.map(|since| {
+                u64::try_from(now.saturating_duration_since(since).as_millis()).unwrap_or(u64::MAX)
+            }),
+        }
+    }
+}
+
+/// What the console window reads (D-037): journal entries after a point, and the
+/// game that runs now (D-072).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ConsolePage {
+    #[serde(flatten)]
+    pub page: crate::console::Page,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub run: Option<GameRun>,
 }
 
 /// The complete state a freshly created webview needs (doc 06 "Bootstrap").

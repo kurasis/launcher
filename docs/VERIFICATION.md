@@ -1124,7 +1124,12 @@ installation's runtime from its lock, and choosing a source writes `javaProvider
   - the console capability grants only `allow-read-console`
     (`security_config`);
   - the window's polling, source/level/text filters, clear and the core-unreachable
-    notice (Vitest).
+    notice (Vitest);
+  - since D-072, the game line on the status line: whole minutes, unknown or junk
+    times left out, not in a live region, not copied, the newest line kept in view
+    when it changes, gone when the game ends or the core does not answer (Vitest);
+    `read_console` carries only the game's state and run time, counted from the spawn
+    by a steady clock, and answers while the state is held (unit).
 - **Live (Xvfb, real game):**
   - Ctrl+Shift+L and **Diagnostics → Open console** both open the window, and a
     second request focuses it.
