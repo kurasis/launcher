@@ -811,6 +811,9 @@ export type Messages = {
     readonly notesEdit: string;
     readonly notesEditLabel: string;
     readonly cancel: string;
+    readonly settingsOf: (values: { name: string | number }) => string;
+    readonly backToDetails: string;
+    readonly memoryWindow: string;
   };
   readonly memory: {
     readonly recommended: (values: { mib: number; reason: string | number }) => string;

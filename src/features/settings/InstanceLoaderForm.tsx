@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { Button } from '../../components/Button';
 import { Field } from '../../components/Field';
 import { Notice } from '../../components/Notice';
@@ -33,10 +33,13 @@ export function InstanceLoaderForm({
   instance,
   loader,
   queued,
+  level = 3,
 }: {
   instance: InstanceSummary;
   loader: LoaderChoice;
   queued: boolean;
+  /** The panel's heading level: 4 under an installation's own settings title. */
+  level?: 3 | 4;
 }) {
   const [versions, setVersions] = useState<LoaderVersion[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -83,10 +86,11 @@ export function InstanceLoaderForm({
   const held = change.pending || busy;
   const appliedLine = useRef<HTMLSpanElement>(null);
   const select = useRef<HTMLSelectElement>(null);
+  const hintId = useId();
   useFocusBack(`${String(done !== null)}:${String(changed)}`, appliedLine, select);
 
   return (
-    <Panel title={t.title} level={3}>
+    <Panel title={t.title} level={level}>
       <form
         className={forms.form}
         onSubmit={(event) => {
@@ -98,54 +102,53 @@ export function InstanceLoaderForm({
           });
         }}
       >
-        <p className={styles.hint}>{t.now({ loader: name, version: label(loader.version) })}</p>
-        <Field label={tl.version({ loader: name })} hint={t.hint}>
-          {(props) => (
-            <select
-              {...props}
-              ref={select}
-              className={[forms.select, styles.long].join(' ')}
-              value={picked}
-              disabled={listed === null}
-              aria-disabled={held || undefined}
-              onChange={(event) => {
-                if (held) return;
-                setPicked(event.target.value);
-                setDone(null);
-              }}
-            >
-              {listed === null && <option value={loader.version}>{tl.loading}</option>}
-              {listed?.map((version) => (
-                <option key={version.id} value={version.id}>
-                  {optionLabel(version)}
-                </option>
-              ))}
-            </select>
-          )}
-        </Field>
-        {loadError !== null && <Notice tone="danger">{loadError}</Notice>}
+        <p>{t.now({ loader: name, version: label(loader.version) })}</p>
+        {/* The version and the button that installs it, side by side while there is room. */}
+        <div className={styles.inlineRow}>
+          <Field label={tl.version({ loader: name })}>
+            {(props) => (
+              <select
+                {...props}
+                aria-describedby={hintId}
+                ref={select}
+                className={[forms.select, styles.long].join(' ')}
+                value={picked}
+                disabled={listed === null}
+                aria-disabled={held || undefined}
+                onChange={(event) => {
+                  if (held) return;
+                  setPicked(event.target.value);
+                  setDone(null);
+                }}
+              >
+                {listed === null && <option value={loader.version}>{tl.loading}</option>}
+                {listed?.map((version) => (
+                  <option key={version.id} value={version.id}>
+                    {optionLabel(version)}
+                  </option>
+                ))}
+              </select>
+            )}
+          </Field>
+          <Button type="submit" disabled={!changed} aria-disabled={held || undefined}>
+            {t.apply}
+          </Button>
+        </div>
+        <p id={hintId} className={styles.hint}>
+          {t.hint}
+        </p>
+        {done !== null && (
+          <span ref={appliedLine} role="status" className={styles.saved} tabIndex={-1}>
+            {t.applied({ loader: name, version: label(done) })}
+          </span>
+        )}
         {changed && (
           <Notice tone="warning">
             {t.warning({ loader: name, from: label(loader.version), to: label(picked) })}
           </Notice>
         )}
+        {loadError !== null && <Notice tone="danger">{loadError}</Notice>}
         {change.error !== null && <Notice tone="danger">{change.error}</Notice>}
-        <div className={styles.actions}>
-          <Button
-            type="submit"
-            variant="primary"
-            size="small"
-            disabled={!changed}
-            aria-disabled={held || undefined}
-          >
-            {t.apply}
-          </Button>
-          {done !== null && (
-            <span ref={appliedLine} role="status" className={styles.saved} tabIndex={-1}>
-              {t.applied({ loader: name, version: label(done) })}
-            </span>
-          )}
-        </div>
       </form>
     </Panel>
   );

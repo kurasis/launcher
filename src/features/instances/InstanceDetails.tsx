@@ -1,8 +1,9 @@
-import { useId, useRef, useState, type ReactNode } from 'react';
+import { useId, useRef, useState, type ReactNode, type RefObject } from 'react';
 import { Button } from '../../components/Button';
 import { Field } from '../../components/Field';
 import { Icon } from '../../components/Icon';
 import { Notice } from '../../components/Notice';
+import { useFocusBack } from '../../components/useFocusBack';
 import forms from '../../components/forms.module.css';
 import type {
   ActiveActivity,
@@ -22,8 +23,10 @@ import { gameLabel } from './loaderLabel';
 
 interface InstanceDetailsProps {
   instance: InstanceSummary;
-  /** Opens this installation's settings on the Settings screen. */
+  /** Opens this installation's settings in place of these details. */
   onEditSettings: () => void;
+  /** Installation settings, for the focus to come back to from the settings. */
+  settingsRef?: RefObject<HTMLButtonElement | null>;
   /** Opens what the installation holds in the Mods tab (D-066). */
   onOpenContent?: (() => void) | undefined;
   onOpenBackups?: (() => void) | undefined;
@@ -47,11 +50,12 @@ type ShownFolder = Extract<GameFolder, 'mods' | 'saves' | 'resourcepacks' | 'sha
 
 /**
  * The chosen installation on one surface: its head, the actions, its state, then its
- * facts, folders and notes. Its settings are edited on the Settings screen.
+ * facts, folders and notes. Its settings open in place of it.
  */
 export function InstanceDetails({
   instance,
   onEditSettings,
+  settingsRef,
   onOpenContent,
   onOpenBackups,
   busy = false,
@@ -82,6 +86,10 @@ export function InstanceDetails({
       ? ['saves', 'resourcepacks', 'logs']
       : ['mods', 'saves', 'resourcepacks', 'shaderpacks', 'logs'];
   const toolbarError = repair.error ?? gameFolder.error;
+  const ownSettings = useRef<HTMLButtonElement>(null);
+  const settings = settingsRef ?? ownSettings;
+  // Verify files goes once the repair it started runs: the focus stays in the toolbar.
+  useFocusBack(mine === null, settings);
 
   return (
     <section className={styles.panel} aria-labelledby={headingId}>
@@ -94,9 +102,12 @@ export function InstanceDetails({
       />
       <div className={styles.toolbar}>
         {mine === null && instance.health === 'ready' && (
+          // Queued, it waits its turn: pressed again it does nothing, but keeps the focus.
           <Button
-            disabled={repair.pending || queued !== null}
-            onClick={() => void repair.run(instance.id)}
+            aria-disabled={repair.pending || queued !== null || undefined}
+            onClick={() => {
+              if (!repair.pending && queued === null) void repair.run(instance.id);
+            }}
           >
             <Icon name="check" size={18} />
             {strings.install.verify}
@@ -108,11 +119,16 @@ export function InstanceDetails({
             {t.content}
           </Button>
         )}
-        <Button onClick={onEditSettings}>
+        <Button ref={settings} onClick={onEditSettings}>
           <Icon name="settings" size={18} />
           {t.title}
         </Button>
-        <Button disabled={gameFolder.pending} onClick={() => void gameFolder.run(instance.id)}>
+        <Button
+          aria-disabled={gameFolder.pending || undefined}
+          onClick={() => {
+            if (!gameFolder.pending) void gameFolder.run(instance.id);
+          }}
+        >
           <Icon name="folder" size={18} />
           {t.folder.game}
         </Button>
@@ -201,8 +217,10 @@ export function InstanceDetails({
                   key={folder}
                   type="button"
                   className={styles.folderLink}
-                  disabled={openFolder.pending}
-                  onClick={() => void openFolder.run(instance.id, folder)}
+                  aria-disabled={openFolder.pending || undefined}
+                  onClick={() => {
+                    if (!openFolder.pending) void openFolder.run(instance.id, folder);
+                  }}
                 >
                   <Icon name="folder" size={16} />
                   {t.folder[folder]}

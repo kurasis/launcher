@@ -22,6 +22,8 @@ import styles from './SettingsView.module.css';
 
 const t = strings.settings.instanceJava;
 const providers: JavaProvider[] = ['mojang', 'temurin'];
+/** The longest JVM options the core takes (`MAX_JVM_ARGUMENTS_CHARS`). */
+const JVM_ARGUMENTS_MAX_LENGTH = 4000;
 type Mode = JavaProvider | 'custom';
 
 function issueText(issue: JavaIssue, required: number, arch: string): string {
@@ -37,7 +39,14 @@ function issueText(issue: JavaIssue, required: number, arch: string): string {
  * source, or the user's own Java after a compatibility check whose warnings the
  * user may accept. Also the extra JVM options. Keyed by instance id by the parent.
  */
-export function InstanceJavaForm({ instance }: { instance: InstanceSummary }) {
+export function InstanceJavaForm({
+  instance,
+  level = 3,
+}: {
+  instance: InstanceSummary;
+  /** The panel's heading level: 4 under an installation's own settings title. */
+  level?: 3 | 4;
+}) {
   const [mode, setMode] = useState<Mode>(
     instance.customJava !== null
       ? 'custom'
@@ -69,6 +78,8 @@ export function InstanceJavaForm({ instance }: { instance: InstanceSummary }) {
   const busy = instance.busy;
   const working = check.pending || save.pending;
   const headingId = useId();
+  const pathHintId = useId();
+  const managedHintId = useId();
   // Save closes while the warnings wait for an answer: the focus goes to Cancel, and
   // back to Save once they are answered.
   const cancelWarnings = useRef<HTMLButtonElement>(null);
@@ -112,7 +123,7 @@ export function InstanceJavaForm({ instance }: { instance: InstanceSummary }) {
   const required = shown?.requiredMajor ?? instance.java?.major ?? 0;
 
   return (
-    <Panel title={t.title} level={3} headingId={headingId}>
+    <Panel title={t.title} level={level} headingId={headingId}>
       <form
         className={forms.form}
         onSubmit={(event) => {
@@ -120,29 +131,35 @@ export function InstanceJavaForm({ instance }: { instance: InstanceSummary }) {
           void submit();
         }}
       >
-        <p className={styles.hint}>{t.now({ value: javaLabel(instance) })}</p>
+        <p>{t.now({ value: javaLabel(instance) })}</p>
         <fieldset
           className={forms.choices}
           disabled={busy}
           aria-labelledby={headingId}
           aria-busy={working || undefined}
         >
-          {providers.map((provider) => (
-            <Choice
-              key={provider}
-              type="radio"
-              name={`java-${instance.id}`}
-              value={provider}
-              checked={mode === provider}
-              title={t.managed({ provider: strings.settings.javaProviders[provider] })}
-              hint={t.managedHint}
-              onChange={() => {
-                if (working) return;
-                setMode(provider);
-                edited();
-              }}
-            />
-          ))}
+          {/* Both private runtimes share what they mean: said once, under the second. */}
+          <div className={styles.block}>
+            {providers.map((provider) => (
+              <Choice
+                key={provider}
+                type="radio"
+                name={`java-${instance.id}`}
+                value={provider}
+                checked={mode === provider}
+                title={t.managed({ provider: strings.settings.javaProviders[provider] })}
+                aria-describedby={managedHintId}
+                onChange={() => {
+                  if (working) return;
+                  setMode(provider);
+                  edited();
+                }}
+              />
+            ))}
+            <p id={managedHintId} className={[styles.hint, styles.indent].join(' ')}>
+              {t.managedHint}
+            </p>
+          </div>
           <Choice
             type="radio"
             name={`java-${instance.id}`}
@@ -159,27 +176,28 @@ export function InstanceJavaForm({ instance }: { instance: InstanceSummary }) {
           />
         </fieldset>
         {mode === 'custom' && (
-          <>
-            <Field label={t.path} hint={t.pathHint}>
-              {(props) => (
-                <input
-                  {...props}
-                  className={forms.input}
-                  dir="ltr"
-                  spellCheck={false}
-                  value={path}
-                  disabled={busy}
-                  readOnly={working}
-                  onChange={(event) => {
-                    setPath(event.target.value);
-                    edited();
-                  }}
-                />
-              )}
-            </Field>
-            <div className={styles.actions}>
+          // Under "My own Java", which it belongs to: the path and Browse… side by side.
+          <div className={styles.indent}>
+            <div className={styles.inlineRow}>
+              <Field label={t.path}>
+                {(props) => (
+                  <input
+                    {...props}
+                    aria-describedby={pathHintId}
+                    className={[forms.input, styles.pathInput].join(' ')}
+                    dir="ltr"
+                    spellCheck={false}
+                    value={path}
+                    disabled={busy}
+                    readOnly={working}
+                    onChange={(event) => {
+                      setPath(event.target.value);
+                      edited();
+                    }}
+                  />
+                )}
+              </Field>
               <Button
-                size="small"
                 disabled={busy}
                 aria-disabled={working || undefined}
                 onClick={() => {
@@ -199,7 +217,10 @@ export function InstanceJavaForm({ instance }: { instance: InstanceSummary }) {
                 {t.browse}
               </Button>
             </div>
-          </>
+            <p id={pathHintId} className={styles.hint}>
+              {t.pathHint}
+            </p>
+          </div>
         )}
         {mode === 'custom' && shown !== null && shown.path === path.trim() && (
           <p className={styles.hint} role="status">
@@ -262,6 +283,7 @@ export function InstanceJavaForm({ instance }: { instance: InstanceSummary }) {
               className={forms.input}
               dir="ltr"
               spellCheck={false}
+              maxLength={JVM_ARGUMENTS_MAX_LENGTH}
               value={args}
               disabled={busy}
               readOnly={working}
@@ -297,18 +319,15 @@ export function InstanceJavaForm({ instance }: { instance: InstanceSummary }) {
           <Button
             ref={saveButton}
             variant="primary"
-            size="small"
             type="submit"
             disabled={busy || pendingCheck !== null}
             aria-disabled={working || undefined}
           >
             {t.save}
           </Button>
-          {saved && (
-            <span role="status" className={styles.saved}>
-              {strings.details.saved}
-            </span>
-          )}
+          <span role="status" className={styles.saved}>
+            {saved ? strings.details.saved : ''}
+          </span>
         </div>
       </form>
     </Panel>

@@ -2,6 +2,7 @@ import { useId, useRef, useState } from 'react';
 import { Button } from '../../components/Button';
 import { Icon } from '../../components/Icon';
 import { Notice } from '../../components/Notice';
+import { useFocusBack } from '../../components/useFocusBack';
 import type { AppSnapshot, LoaderKind } from '../../lib/contracts';
 import { ipc } from '../../lib/ipc';
 import { numberLocale, strings } from '../../lib/strings';
@@ -12,12 +13,11 @@ import { CreateInstanceForm } from './CreateInstanceForm';
 import { InstallPanel } from './InstallPanel';
 import { InstanceDetails } from './InstanceDetails';
 import { InstanceList } from './InstanceList';
+import { InstanceSettings } from './InstanceSettings';
 import styles from './Instances.module.css';
 
 interface InstancesViewProps {
   snapshot: AppSnapshot;
-  /** Opens the settings of an installation on the Settings screen. */
-  onEditSettings: (instanceId: string) => void;
   onOpenBackups?: () => void;
   /** What an installation holds, in the Mods tab (D-066). */
   onOpenContent?: (instanceId: string) => void;
@@ -37,11 +37,11 @@ const t = strings.instances;
 
 /**
  * Installations (concept A): the list on the inline-start side, the chosen one on a
- * surface beside it. Creating one takes the whole screen until it is done.
+ * surface beside it, or its settings in place of it. Creating one takes the whole
+ * screen until it is done.
  */
 export function InstancesView({
   snapshot,
-  onEditSettings,
   onOpenBackups = () => undefined,
   onOpenContent,
   createRequest = null,
@@ -50,6 +50,11 @@ export function InstancesView({
   const [creating, setCreating] = useState(createRequest !== null);
   const [deleted, setDeleted] = useState<string | null>(null);
   const [bringing, setBringing] = useState(false);
+  // The chosen installation's settings show in place of its details; another row chosen
+  // meanwhile shows its own.
+  const [editing, setEditing] = useState(false);
+  const settingsHeading = useRef<HTMLHeadingElement>(null);
+  const settingsButton = useRef<HTMLButtonElement>(null);
   // Set when the form closes, so focus comes back to the button that opens it.
   const returnFocus = useRef(false);
   const select = useCommand((requestId: string, id: string) =>
@@ -68,6 +73,13 @@ export function InstancesView({
     lastRun.diagnosis !== null
       ? { ...lastRun, diagnosis: lastRun.diagnosis }
       : null;
+  const settingsOpen = editing && selected !== null;
+  // The button pressed goes with the view it opened: the settings' title takes the focus,
+  // and Back gives it to Installation settings.
+  useFocusBack(settingsOpen, settingsHeading, settingsButton);
+  const openSettings = () => {
+    setEditing(true);
+  };
 
   if (creating) {
     return (
@@ -79,6 +91,8 @@ export function InstancesView({
         onDone={(createdId) => {
           returnFocus.current = true;
           setCreating(false);
+          // A new installation opens on its details, where it is installed.
+          setEditing(false);
           // The new installation is the one to install and play next.
           if (createdId !== undefined && createdId !== selectedId) {
             void select.run(createdId);
@@ -135,7 +149,8 @@ export function InstancesView({
             setBringing(false);
           }}
           onDone={(id) => {
-            // The new installation is the one to play next.
+            // The new installation is the one to play next, shown with its details.
+            setEditing(false);
             if (id !== selectedId) void select.run(id);
           }}
         />
@@ -164,13 +179,23 @@ export function InstancesView({
           <div className={styles.main}>
             {selected === null ? (
               <p className={styles.choose}>{t.choose}</p>
+            ) : settingsOpen ? (
+              <InstanceSettings
+                key={selected.id}
+                instance={selected}
+                memory={snapshot.memory}
+                queued={snapshot.queue.some((q) => q.instanceId === selected.id)}
+                headingRef={settingsHeading}
+                onBack={() => {
+                  setEditing(false);
+                }}
+              />
             ) : (
               <InstanceDetails
                 key={selected.id}
                 instance={selected}
-                onEditSettings={() => {
-                  onEditSettings(selected.id);
-                }}
+                onEditSettings={openSettings}
+                settingsRef={settingsButton}
                 onOpenContent={
                   onOpenContent === undefined
                     ? undefined
@@ -199,9 +224,7 @@ export function InstancesView({
                     key={`crash-${crashed.runId}`}
                     instance={selected}
                     run={crashed}
-                    onEditSettings={() => {
-                      onEditSettings(selected.id);
-                    }}
+                    onEditSettings={openSettings}
                     onOpenBackups={onOpenBackups}
                     busy={snapshot.activeOperation !== null}
                   />

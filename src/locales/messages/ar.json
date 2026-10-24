@@ -763,7 +763,10 @@
       "notesEmpty": "لا توجد ملاحظات بعد.",
       "notesEdit": "تعديل",
       "notesEditLabel": "تعديل الملاحظات",
-      "cancel": "إلغاء"
+      "cancel": "إلغاء",
+      "settingsOf": "إعدادات التثبيت: {name}",
+      "backToDetails": "العودة إلى التفاصيل",
+      "memoryWindow": "الذاكرة والنافذة"
     },
     "memory": {
       "recommended": "المُوصى به: ⁨{mib, number, ::group-off} MiB⁩ لـ ⁨{reason}⁩.",
@@ -1205,7 +1208,7 @@
         "custom": "Java الخاصة بي",
         "customHint": "Java مثبتة على هذا الكمبيوتر. يقارن المشغّل إصدارها باللعبة وينبّه عند عدم التطابق.",
         "path": "مسار برنامج Java",
-        "pathHint": "مثلًا C:\\Program Files\\Java\\jdk-21\\bin\\javaw.exe أو /usr/lib/jvm/java-21/bin/java.",
+        "pathHint": "مثلًا ⁦C:\\Program Files\\Java\\jdk-21\\bin\\javaw.exe⁩ أو ⁦/usr/lib/jvm/java-21/bin/java⁩.",
         "browse": "استعراض…",
         "installFirst": "ثبّت هذا الإصدار أولًا، ثم اختر Java الخاصة بك.",
         "jvmArguments": "خيارات JVM",
@@ -1224,7 +1227,7 @@
         "accepted": "اخترت Java هذه رغم التحذير:",
         "pendingSwitch": "تُنزَّل Java من {provider} عند الإصلاح التالي.",
         "repairNow": "أصلح الآن",
-        "customValue": "Java الخاصة بك {version}"
+        "customValue": "Java الخاصة بك ⁦{version}⁩"
       },
       "instanceLoader": {
         "title": "إصدار مُحمِّل التعديلات",

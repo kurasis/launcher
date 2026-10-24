@@ -77,14 +77,12 @@ const many = [
 describe('InstancesView', () => {
   it('shows search and order only for more than six installations', () => {
     backend();
-    const { rerender } = render(
-      <InstancesView snapshot={snapshot(many.slice(0, 6))} onEditSettings={() => undefined} />,
-    );
+    const { rerender } = render(<InstancesView snapshot={snapshot(many.slice(0, 6))} />);
     expect(screen.getByRole('heading', { level: 2, name: 'Installations' })).toBeVisible();
     expect(screen.getByText('6 installations')).toBeInTheDocument();
     expect(screen.queryByRole('searchbox')).toBeNull();
     expect(screen.queryByRole('group', { name: 'Order' })).toBeNull();
-    rerender(<InstancesView snapshot={snapshot(many)} onEditSettings={() => undefined} />);
+    rerender(<InstancesView snapshot={snapshot(many)} />);
     const search = screen.getByRole('searchbox', { name: 'Find in the list' });
     expect(search).toHaveAttribute('maxLength', '64');
     expect(screen.getByRole('group', { name: 'Order' })).toBeVisible();
@@ -94,7 +92,7 @@ describe('InstancesView', () => {
 
   it('finds and orders the installations, keeping the chosen one in the panel', () => {
     backend();
-    render(<InstancesView snapshot={snapshot(many)} onEditSettings={() => undefined} />);
+    render(<InstancesView snapshot={snapshot(many)} />);
     // Recent first: the last game, then the newest installation.
     expect(rowNames()).toEqual([
       'Skyblock',
@@ -143,9 +141,7 @@ describe('InstancesView', () => {
 
   it('chooses an installation through the settings', async () => {
     const calls = backend();
-    render(
-      <InstancesView snapshot={snapshot(many.slice(0, 3))} onEditSettings={() => undefined} />,
-    );
+    render(<InstancesView snapshot={snapshot(many.slice(0, 3))} />);
     const row = screen.getByRole('button', { name: /^Old server/ });
     expect(row).not.toHaveAttribute('aria-current');
     expect(within(row).getByText('Minecraft 1.12.2')).toBeVisible();
@@ -169,7 +165,6 @@ describe('InstancesView', () => {
         snapshot={snapshot(many, {
           settings: { ...base, selectedInstanceId: many[0]?.id ?? null, writable: false },
         })}
-        onEditSettings={() => undefined}
       />,
     );
     for (const row of within(screen.getByRole('list')).getAllByRole('button')) {
@@ -188,9 +183,7 @@ describe('InstancesView', () => {
 
   it('reaches Rename and Delete through the installation menu', async () => {
     const calls = backend();
-    render(
-      <InstancesView snapshot={snapshot(many.slice(0, 2))} onEditSettings={() => undefined} />,
-    );
+    render(<InstancesView snapshot={snapshot(many.slice(0, 2))} />);
     const menuButton = screen.getByRole('button', { name: 'Installation actions' });
     // The menu's name leaves the installation out, so a search for it finds the row only.
     expect(screen.getAllByRole('button', { name: /Survival/ })).toHaveLength(1);
@@ -230,20 +223,16 @@ describe('InstancesView', () => {
 
   it('reaches settings, content, the folder, backups and Verify from the toolbar', async () => {
     const calls = backend();
-    const onEditSettings = vi.fn();
     const onOpenContent = vi.fn();
     const onOpenBackups = vi.fn();
     const ready = instance(1, { displayName: 'Survival', health: 'ready' });
     render(
       <InstancesView
         snapshot={snapshot([ready])}
-        onEditSettings={onEditSettings}
         onOpenContent={onOpenContent}
         onOpenBackups={onOpenBackups}
       />,
     );
-    fireEvent.click(screen.getByRole('button', { name: 'Installation settings' }));
-    expect(onEditSettings).toHaveBeenCalledWith(ready.id);
     fireEvent.click(screen.getByRole('button', { name: 'Mods and content' }));
     expect(onOpenContent).toHaveBeenCalledWith(ready.id);
     fireEvent.click(screen.getByRole('button', { name: 'Backups' }));
@@ -285,25 +274,17 @@ describe('InstancesView', () => {
       server: null,
     };
     const { rerender } = render(
-      <InstancesView
-        snapshot={snapshot([instance(1, { displayName: 'Survival' })])}
-        onEditSettings={() => undefined}
-      />,
+      <InstancesView snapshot={snapshot([instance(1, { displayName: 'Survival' })])} />,
     );
     expect(screen.queryByText(/Last played/)).toBeNull();
 
-    rerender(
-      <InstancesView
-        snapshot={snapshot([played], { lastRun: run })}
-        onEditSettings={() => undefined}
-      />,
-    );
+    rerender(<InstancesView snapshot={snapshot([played], { lastRun: run })} />);
     expect(
       screen.getByText(/^Last played .+, 42 minutes\. The game ended without errors\.$/),
     ).toBeVisible();
 
     // Without this session's run there is no length, only the start and the ending.
-    rerender(<InstancesView snapshot={snapshot([played])} onEditSettings={() => undefined} />);
+    rerender(<InstancesView snapshot={snapshot([played])} />);
     expect(screen.getByText(/^Last played .+\. The game ended without errors\.$/)).toBeVisible();
     expect(screen.queryByText(/minutes/)).toBeNull();
 
@@ -316,14 +297,14 @@ describe('InstancesView', () => {
         finishedAt: '2026-10-21T09:00:00Z',
       },
     };
-    rerender(<InstancesView snapshot={snapshot([repaired])} onEditSettings={() => undefined} />);
+    rerender(<InstancesView snapshot={snapshot([repaired])} />);
     expect(screen.queryByText(/^Last played .+\./)).toBeNull();
     expect(screen.getByText('Last played')).toBeVisible();
     expect(screen.getByText('Last result')).toBeVisible();
 
     // The game runs again: the result is the previous game's.
     const running = { ...played, lastPlayedAt: '2026-10-22T08:00:00Z' };
-    rerender(<InstancesView snapshot={snapshot([running])} onEditSettings={() => undefined} />);
+    rerender(<InstancesView snapshot={snapshot([running])} />);
     expect(screen.queryByText(/^Last played .+\./)).toBeNull();
     expect(screen.getByText('Last played')).toBeVisible();
   });
@@ -331,11 +312,7 @@ describe('InstancesView', () => {
   it('shows only the new-installation form while creating', () => {
     backend();
     render(
-      <InstancesView
-        snapshot={snapshot(many)}
-        onEditSettings={() => undefined}
-        createRequest={{ version: null, loader: null }}
-      />,
+      <InstancesView snapshot={snapshot(many)} createRequest={{ version: null, loader: null }} />,
     );
     expect(screen.queryByRole('heading', { name: 'Installations' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'New installation' })).toBeNull();
@@ -345,7 +322,7 @@ describe('InstancesView', () => {
 
   it('brings focus back to New installation when the form closes', () => {
     backend();
-    render(<InstancesView snapshot={snapshot(many)} onEditSettings={() => undefined} />);
+    render(<InstancesView snapshot={snapshot(many)} />);
     fireEvent.click(screen.getByRole('button', { name: 'New installation' }));
     fireEvent.click(screen.getByRole('button', { name: 'Back to installations' }));
     expect(screen.getByRole('button', { name: 'New installation' })).toHaveFocus();
@@ -353,9 +330,134 @@ describe('InstancesView', () => {
 
   it('says how to start when there is no installation', () => {
     backend();
-    render(<InstancesView snapshot={snapshot([])} onEditSettings={() => undefined} />);
+    render(<InstancesView snapshot={snapshot([])} />);
     expect(screen.getByText(/No installations yet/)).toBeVisible();
     expect(screen.getByRole('button', { name: 'New installation' })).toBeVisible();
     expect(screen.queryByRole('list')).toBeNull();
+  });
+  it("opens an installation's settings in place of its details, and comes back", async () => {
+    const calls = backend();
+    const ready = instance(1, { displayName: 'Survival', health: 'ready' });
+    const modded = instance(2, {
+      displayName: 'Shaders',
+      loader: { kind: 'fabric', version: '0.16.9' },
+      maxHeapMib: 6144,
+    });
+    const { rerender } = render(<InstancesView snapshot={snapshot([ready, modded])} />);
+    const open = screen.getByRole('button', { name: 'Installation settings' });
+    open.focus();
+    fireEvent.click(open);
+    // The button went with the details: the settings' title has the focus.
+    const title = screen.getByRole('heading', {
+      level: 3,
+      name: 'Installation settings: ⁨Survival⁩',
+    });
+    await waitFor(() => {
+      expect(title).toHaveFocus();
+    });
+    expect(screen.getByRole('region', { name: 'Memory and window' })).toBeInTheDocument();
+    expect(
+      screen.getByRole('heading', { level: 4, name: 'Java of this installation' }),
+    ).toBeInTheDocument();
+    // A game without a mod loader has no loader version; the details' toolbar is gone.
+    expect(screen.queryByRole('region', { name: 'Mod loader version' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Verify files' })).toBeNull();
+    expect(screen.getByLabelText('Maximum memory (MiB)')).toHaveValue(ready.maxHeapMib);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Open the game folder' }));
+    await waitFor(() => {
+      expect(calls.find((c) => c.cmd === 'open_instance_folder')?.args).toMatchObject({
+        request: { payload: { instanceId: ready.id, folder: null } },
+      });
+    });
+
+    // Another installation chosen meanwhile shows its own settings.
+    rerender(
+      <InstancesView
+        snapshot={snapshot([ready, modded], {
+          settings: { ...snapshotFixture().settings, selectedInstanceId: modded.id },
+        })}
+      />,
+    );
+    expect(
+      screen.getByRole('heading', { level: 3, name: 'Installation settings: ⁨Shaders⁩' }),
+    ).toBeInTheDocument();
+    expect(screen.getByLabelText('Maximum memory (MiB)')).toHaveValue(6144);
+    expect(screen.getByRole('region', { name: 'Mod loader version' })).toBeInTheDocument();
+
+    // Back: the details again, with the focus on the button that opened the settings.
+    const back = screen.getByRole('button', { name: 'Back to details' });
+    back.focus();
+    fireEvent.click(back);
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Installation settings' })).toHaveFocus();
+    });
+    expect(screen.queryByLabelText('Maximum memory (MiB)')).toBeNull();
+  });
+
+  it("opens the settings in place from a crash's help", async () => {
+    backend();
+    const crashed = instance(1, { displayName: 'Survival' });
+    const run: RunSummary = {
+      runId: 'run-1',
+      kind: 'game',
+      instanceId: crashed.id,
+      state: 'failed',
+      startedAt: '2026-10-18T12:00:00Z',
+      endedAt: '2026-10-18T12:01:00Z',
+      exitCode: -1,
+      durationMs: 60_000,
+      drainTimedOut: false,
+      outputTail: [],
+      outputLinesDropped: 0,
+      error: null,
+      loggingDegraded: false,
+      signal: null,
+      diagnosis: {
+        kind: 'out_of_memory',
+        details: { area: 'Java heap space', memory: '2048', suggested: '4096', exitCode: '-1' },
+        evidence: [],
+        suspects: [],
+        report: null,
+        actions: ['memory_settings'],
+        notes: [],
+      },
+      server: null,
+    };
+    render(<InstancesView snapshot={snapshot([crashed], { lastRun: run })} />);
+    const change = screen.getByRole('button', { name: 'Change memory' });
+    change.focus();
+    fireEvent.click(change);
+    await waitFor(() => {
+      expect(
+        screen.getByRole('heading', { level: 3, name: 'Installation settings: ⁨Survival⁩' }),
+      ).toHaveFocus();
+    });
+  });
+
+  it('keeps the focus on Verify files while it asks, and in the toolbar once the repair runs', async () => {
+    const calls = backend();
+    const ready = instance(1, { displayName: 'Survival', health: 'ready' });
+    const { rerender } = render(<InstancesView snapshot={snapshot([ready])} />);
+    const verify = screen.getByRole('button', { name: 'Verify files' });
+    verify.focus();
+    fireEvent.click(verify);
+    expect(verify).toHaveAttribute('aria-disabled', 'true');
+    expect(verify).toHaveFocus();
+    await waitFor(() => {
+      expect(calls.filter((c) => c.cmd === 'repair_instance')).toHaveLength(1);
+    });
+    // The repair it started runs: Verify files goes, Installation settings takes the focus.
+    rerender(
+      <InstancesView
+        snapshot={snapshot([ready], {
+          activeOperation: { kind: 'repair', instanceId: ready.id, operationId: 'op-1' },
+        })}
+      />,
+    );
+    expect(screen.queryByRole('button', { name: 'Verify files' })).toBeNull();
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Installation settings' })).toHaveFocus();
+    });
   });
 });
