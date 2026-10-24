@@ -397,6 +397,15 @@ replaces it), `superseded`.
   is deleted after installation; Repair downloads the pinned package again.
 - **Never touched:** PATH, JAVA_HOME, registry associations, any system or official
   launcher Java.
+- **Amended 2026-10-24 (owner request: faster Play):** after a full check whose files all
+  changed more than 2 s earlier, `.launcher-checked.json` records every entry's kind, size,
+  link target, executable bit and modification time with the tree receipt's SHA-256. A
+  launch whose files look exactly like that skips hashing (about 4 ms instead of about
+  0.55 s for Mojang's Java 21 on a CPU without SHA instructions). Any difference, a missing
+  or foreign stamp, or a file too new falls back to the full check, which writes a new
+  stamp or removes the old one. Repair and reuse at install always hash. Damage that keeps
+  a file's size and time is Repair's to find, as it already is for game files; the stamp
+  guards against nothing the receipts and install lock beside it do not.
 
 ## D-024 — Install and repair orchestration
 
@@ -439,6 +448,10 @@ replaces it), `superseded`.
   (`AuthService::verify_for_launch`). Any failure ends the run before a process exists;
   file or runtime problems mark the installation `repair_required` and release the
   permit, so Repair can start immediately.
+- **Amended 2026-10-24 (owner request: faster Play):** the runtime tree is checked against
+  its stamp (D-023) and hashed only when the files look different. The account check
+  starts with the preflight and runs while the files are checked; a file or runtime problem
+  is still reported first, whatever the account answers.
 - **Compiler:** `-Xmx<heap>M`, the metadata JVM arguments in order, the logging argument,
   the main class, the metadata game arguments. Every placeholder needs an explicit value;
   `library_directory` and unknown names are errors. `${natives_directory}/<suffix>`

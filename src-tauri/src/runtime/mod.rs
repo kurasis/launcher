@@ -15,6 +15,7 @@ pub mod custom;
 pub mod extract;
 pub mod mojang;
 pub mod probe;
+pub mod stamp;
 pub mod tree;
 
 #[cfg(test)]
@@ -24,7 +25,7 @@ mod tests;
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
-use std::time::Duration;
+use std::time::{Duration, SystemTime};
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -109,8 +110,26 @@ pub enum Verification {
     Invalid(String),
 }
 
-/// Checks an installed runtime against its receipts without executing it.
+/// Checks an installed runtime against its receipts without executing it,
+/// hashing every file.
 pub fn verify_installed(root: &DataRoot, package: &RuntimePackage) -> LauncherResult<Verification> {
+    check_installed(root, package, false)
+}
+
+/// The check before a launch: files that look exactly as at the last full check
+/// (see [`stamp`]) are not hashed again.
+pub fn verify_for_launch(
+    root: &DataRoot,
+    package: &RuntimePackage,
+) -> LauncherResult<Verification> {
+    check_installed(root, package, true)
+}
+
+fn check_installed(
+    root: &DataRoot,
+    package: &RuntimePackage,
+    stamped: bool,
+) -> LauncherResult<Verification> {
     let dir = root.runtime_dir(&package.key);
     if fs::symlink_metadata(&dir).is_err() {
         return Ok(Verification::Missing);
@@ -134,8 +153,14 @@ pub fn verify_installed(root: &DataRoot, package: &RuntimePackage) -> LauncherRe
     let Ok(expected) = serde_json::from_slice::<TreeReceipt>(&tree_bytes) else {
         return invalid(TREE_RECEIPT);
     };
-    if let Some(problem) = tree::verify(&dir, &expected)? {
-        return invalid(problem.path());
+    if !(stamped && stamp::unchanged(&dir, &receipt.tree_receipt_sha256)) {
+        let started = SystemTime::now();
+        let seen = tree::scan(&dir, true)?;
+        if let Some(problem) = tree::difference(&expected, &seen) {
+            stamp::remove(&dir);
+            return invalid(problem.path());
+        }
+        stamp::write(&dir, &receipt.tree_receipt_sha256, &seen, started);
     }
     if !has_java(&expected, &receipt.java) {
         return invalid(&receipt.java);

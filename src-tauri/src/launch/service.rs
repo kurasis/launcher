@@ -651,45 +651,15 @@ impl LaunchService {
         settings: RunSettings,
         cancel: &CancelToken,
     ) -> LauncherResult<Prepared> {
+        let cancelled =
+            || LauncherError::new(ErrorCode::OperationCancelled, "The launch was cancelled.");
         let check_cancel = || {
             if cancel.is_cancelled() {
-                Err(LauncherError::new(
-                    ErrorCode::OperationCancelled,
-                    "The launch was cancelled.",
-                ))
+                Err(cancelled())
             } else {
                 Ok(())
             }
         };
-        let lock = match reconcile::read_lock(&root.install_lock(instance_id))
-            .map_err(|e| LauncherError::from_io(&e, "Reading the installation record"))?
-        {
-            LockState::Complete(lock) if lock.instance_id == instance_id => *lock,
-            _ => return Err(repair_needed("lock")),
-        };
-        // Locked files, and what a loader installer produced: existence and size
-        // (full hashes are Repair's job).
-        let mut files = lock.artifacts.clone();
-        if let Some(loader) = &lock.loader {
-            files.extend(loader.generated.iter().cloned());
-        }
-        let files_root = root.clone();
-        let missing = tokio::task::spawn_blocking(move || {
-            files.iter().find_map(|a| {
-                let mut path = files_root.path().to_path_buf();
-                path.extend(a.path.split('/'));
-                match std::fs::metadata(&path) {
-                    Ok(m) if m.is_file() && m.len() == a.size => None,
-                    _ => Some(a.path.clone()),
-                }
-            })
-        })
-        .await
-        .map_err(|_| LauncherError::internal("A file check stopped unexpectedly."))?;
-        if missing.is_some() {
-            return Err(repair_needed("files"));
-        }
-        check_cancel()?;
         let RunSettings {
             max_heap_mib,
             resolution,
@@ -700,21 +670,9 @@ impl LaunchService {
             fullscreen,
             launcher_skins,
         } = settings;
-        let java = match custom_java {
-            Some(path) => self.custom_java(path, &lock).await?,
-            None => self.private_java(root, &lock).await?,
-        };
-        check_cancel()?;
-        let plan = self.locked_plan(&lock).await?;
-        lock::project_asset_index(
-            root,
-            &SafeName::parse(&lock.asset_index.id)?,
-            &lock.asset_index.sha1,
-        )?;
-        check_cancel()?;
-
-        // Fresh access check (or the no-token profile); without it Java is never started.
-        let identity: BoxFuture<'_, LauncherResult<LaunchIdentity>> = match &mode {
+        // Fresh access check (or the no-token profile); without it Java is never
+        // started. It goes out while the files are checked.
+        let mut identity: BoxFuture<'_, LauncherResult<LaunchIdentity>> = match &mode {
             LaunchMode::Account(profile_id) => self.auth.authorize(profile_id),
             LaunchMode::NoToken(profile) => {
                 let identity = profile.identity();
@@ -725,11 +683,68 @@ impl LaunchService {
                 Box::pin(async move { Ok(identity) })
             }
         };
-        let identity = tokio::select! {
-            identity = identity => identity?,
-            () = cancel.cancelled() => {
-                return Err(LauncherError::new(ErrorCode::OperationCancelled, "The launch was cancelled."));
+        let local = async {
+            let lock = match reconcile::read_lock(&root.install_lock(instance_id))
+                .map_err(|e| LauncherError::from_io(&e, "Reading the installation record"))?
+            {
+                LockState::Complete(lock) if lock.instance_id == instance_id => *lock,
+                _ => return Err(repair_needed("lock")),
+            };
+            // Locked files, and what a loader installer produced: existence and size
+            // (full hashes are Repair's job).
+            let mut files = lock.artifacts.clone();
+            if let Some(loader) = &lock.loader {
+                files.extend(loader.generated.iter().cloned());
             }
+            let files_root = root.clone();
+            let missing = tokio::task::spawn_blocking(move || {
+                files.iter().find_map(|a| {
+                    let mut path = files_root.path().to_path_buf();
+                    path.extend(a.path.split('/'));
+                    match std::fs::metadata(&path) {
+                        Ok(m) if m.is_file() && m.len() == a.size => None,
+                        _ => Some(a.path.clone()),
+                    }
+                })
+            })
+            .await
+            .map_err(|_| LauncherError::internal("A file check stopped unexpectedly."))?;
+            if missing.is_some() {
+                return Err(repair_needed("files"));
+            }
+            check_cancel()?;
+            let java = match custom_java {
+                Some(path) => self.custom_java(path, &lock).await?,
+                None => self.private_java(root, &lock).await?,
+            };
+            check_cancel()?;
+            let plan = self.locked_plan(&lock).await?;
+            lock::project_asset_index(
+                root,
+                &SafeName::parse(&lock.asset_index.id)?,
+                &lock.asset_index.sha1,
+            )?;
+            Ok((lock, java, plan))
+        };
+        let mut local = std::pin::pin!(local);
+        // A problem with the files comes first: Repair is needed whatever the
+        // account says. The account is asked before the files are read.
+        let mut answered = None;
+        let (lock, java, plan) = loop {
+            tokio::select! {
+                biased;
+                () = cancel.cancelled() => return Err(cancelled()),
+                identity = &mut identity, if answered.is_none() => answered = Some(identity),
+                checked = &mut local => break checked?,
+            }
+        };
+        check_cancel()?;
+        let identity = match answered {
+            Some(identity) => identity?,
+            None => tokio::select! {
+                identity = identity => identity?,
+                () = cancel.cancelled() => return Err(cancelled()),
+            },
         };
         check_cancel()?;
         if identity.offline {
@@ -895,7 +910,7 @@ impl LaunchService {
         let package = lock::runtime_from_lock(lock)?;
         let verify_root = root.clone();
         let installed = match tokio::task::spawn_blocking(move || {
-            runtime::verify_installed(&verify_root, &package)
+            runtime::verify_for_launch(&verify_root, &package)
         })
         .await
         .map_err(|_| LauncherError::internal("A runtime check stopped unexpectedly."))??

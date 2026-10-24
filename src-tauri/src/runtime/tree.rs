@@ -6,6 +6,7 @@
 use std::fs;
 use std::io::Read;
 use std::path::Path;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde::{Deserialize, Serialize};
 use sha2::Digest as _;
@@ -48,6 +49,16 @@ pub struct TreeReceipt {
     pub entries: Vec<TreeEntry>,
 }
 
+/// An entry as the file system sees it: a file's hash only when it was read,
+/// and when the file last changed (seconds and nanoseconds since 1970).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Seen {
+    #[serde(flatten)]
+    pub entry: TreeEntry,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub modified: Option<(u64, u32)>,
+}
+
 /// The first difference between a receipt and the files on disk.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TreeProblem {
@@ -82,7 +93,12 @@ fn sha256_file(path: &Path) -> LauncherResult<String> {
     Ok(hex::encode(hasher.finalize()))
 }
 
-fn walk(dir: &Path, prefix: &str, out: &mut Vec<TreeEntry>) -> LauncherResult<()> {
+fn modified(metadata: &fs::Metadata) -> Option<(u64, u32)> {
+    let since = metadata.modified().ok()?.duration_since(UNIX_EPOCH).ok()?;
+    Some((since.as_secs(), since.subsec_nanos()))
+}
+
+fn walk(dir: &Path, prefix: &str, hash: bool, out: &mut Vec<Seen>) -> LauncherResult<()> {
     let mut children: Vec<_> = fs::read_dir(dir)
         .map_err(|e| io_error(&e))?
         .collect::<Result<_, _>>()
@@ -104,77 +120,102 @@ fn walk(dir: &Path, prefix: &str, out: &mut Vec<TreeEntry>) -> LauncherResult<()
         let file_type = metadata.file_type();
         if file_type.is_symlink() {
             let target = fs::read_link(&full).map_err(|e| io_error(&e))?;
-            out.push(TreeEntry {
-                path,
-                kind: EntryKind::Symlink,
-                size: None,
-                sha256: None,
-                executable: false,
-                target: Some(target.to_string_lossy().replace('\\', "/")),
+            out.push(Seen {
+                entry: TreeEntry {
+                    path,
+                    kind: EntryKind::Symlink,
+                    size: None,
+                    sha256: None,
+                    executable: false,
+                    target: Some(target.to_string_lossy().replace('\\', "/")),
+                },
+                modified: None,
             });
         } else if file_type.is_dir() {
-            out.push(TreeEntry {
-                path: path.clone(),
-                kind: EntryKind::Dir,
-                size: None,
-                sha256: None,
-                executable: false,
-                target: None,
+            out.push(Seen {
+                entry: TreeEntry {
+                    path: path.clone(),
+                    kind: EntryKind::Dir,
+                    size: None,
+                    sha256: None,
+                    executable: false,
+                    target: None,
+                },
+                modified: None,
             });
-            walk(&full, &path, out)?;
+            walk(&full, &path, hash, out)?;
         } else if file_type.is_file() {
-            out.push(TreeEntry {
-                path,
-                kind: EntryKind::File,
-                size: Some(metadata.len()),
-                sha256: Some(sha256_file(&full)?),
-                executable: is_executable(&full),
-                target: None,
+            out.push(Seen {
+                entry: TreeEntry {
+                    path,
+                    kind: EntryKind::File,
+                    size: Some(metadata.len()),
+                    sha256: if hash {
+                        Some(sha256_file(&full)?)
+                    } else {
+                        None
+                    },
+                    executable: is_executable(&full),
+                    target: None,
+                },
+                modified: modified(&metadata),
             });
         } else {
-            out.push(TreeEntry {
-                path,
-                kind: EntryKind::File,
-                size: None,
-                sha256: None,
-                executable: false,
-                target: Some("special file".into()),
+            out.push(Seen {
+                entry: TreeEntry {
+                    path,
+                    kind: EntryKind::File,
+                    size: None,
+                    sha256: None,
+                    executable: false,
+                    target: Some("special file".into()),
+                },
+                modified: None,
             });
         }
     }
     Ok(())
 }
 
+/// Every entry under `root` in plain path order, the order `verify` merges in.
+/// Files are read and hashed only when `hash` is set.
+pub fn scan(root: &Path, hash: bool) -> LauncherResult<Vec<Seen>> {
+    let mut seen = Vec::new();
+    walk(root, "", hash, &mut seen)?;
+    seen.sort_by(|a, b| a.entry.path.cmp(&b.entry.path));
+    Ok(seen)
+}
+
 /// Describes the tree under `root` as it is now.
 pub fn build(root: &Path) -> LauncherResult<TreeReceipt> {
-    let mut entries = Vec::new();
-    walk(root, "", &mut entries)?;
-    // `verify` merges two lists, so both must be in plain path order.
-    entries.sort_by(|a, b| a.path.cmp(&b.path));
     Ok(TreeReceipt {
         schema_version: SCHEMA_VERSION,
-        entries,
+        entries: scan(root, true)?.into_iter().map(|s| s.entry).collect(),
     })
 }
 
 /// Compares the tree under `root` with `expected`.
 pub fn verify(root: &Path, expected: &TreeReceipt) -> LauncherResult<Option<TreeProblem>> {
-    let actual = build(root)?;
-    let mut have = actual.entries.iter().peekable();
+    Ok(difference(expected, &scan(root, true)?))
+}
+
+/// The first difference between `expected` and a hashed [`scan`].
+pub fn difference(expected: &TreeReceipt, actual: &[Seen]) -> Option<TreeProblem> {
+    let mut have = actual.iter().map(|s| &s.entry).peekable();
     let mut want = expected.entries.iter().peekable();
     loop {
         match (want.peek(), have.peek()) {
-            (None, None) => return Ok(None),
-            (Some(w), None) => return Ok(Some(TreeProblem::Missing(w.path.clone()))),
-            (None, Some(h)) => return Ok(Some(TreeProblem::Unexpected(h.path.clone()))),
+            (None, None) => return None,
+            (Some(w), None) => return Some(TreeProblem::Missing(w.path.clone())),
+            (None, Some(h)) => return Some(TreeProblem::Unexpected(h.path.clone())),
             (Some(w), Some(h)) => match w.path.cmp(&h.path) {
-                std::cmp::Ordering::Less => return Ok(Some(TreeProblem::Missing(w.path.clone()))),
+                std::cmp::Ordering::Less => return Some(TreeProblem::Missing(w.path.clone())),
                 std::cmp::Ordering::Greater => {
-                    return Ok(Some(TreeProblem::Unexpected(h.path.clone())));
+                    return Some(TreeProblem::Unexpected(h.path.clone()));
                 }
                 std::cmp::Ordering::Equal => {
                     if w != h {
-                        return Ok(Some(TreeProblem::Changed(w.path.clone())));
+                        return Some(TreeProblem::Changed(w.path.clone()));
                     }
                     want.next();
                     have.next();
@@ -182,6 +223,34 @@ pub fn verify(root: &Path, expected: &TreeReceipt) -> LauncherResult<Option<Tree
             },
         }
     }
+}
+
+/// The scan without hashes, as a later unhashed [`scan`] of the same files sees it.
+pub fn without_hashes(seen: &[Seen]) -> Vec<Seen> {
+    seen.iter()
+        .map(|s| Seen {
+            entry: TreeEntry {
+                sha256: None,
+                ..s.entry.clone()
+            },
+            modified: s.modified,
+        })
+        .collect()
+}
+
+/// True when every file of the scan last changed at a known time before
+/// `since`. A file changed later could change again within the same clock tick
+/// and keep its time.
+pub fn settled(seen: &[Seen], since: SystemTime) -> bool {
+    let Ok(since) = since.duration_since(UNIX_EPOCH) else {
+        return false;
+    };
+    seen.iter()
+        .filter(|s| s.entry.kind == EntryKind::File)
+        .all(|s| {
+            s.modified
+                .is_some_and(|(secs, nanos)| std::time::Duration::new(secs, nanos) < since)
+        })
 }
 
 /// Canonical bytes of a receipt; their SHA-256 identifies it in locks.

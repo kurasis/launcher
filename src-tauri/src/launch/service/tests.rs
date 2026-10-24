@@ -441,6 +441,24 @@ async fn missing_files_require_repair_before_any_spawn() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn missing_files_are_named_before_the_account_answer() {
+    let s = Setup::new().await;
+    std::fs::remove_file(s.f.library_path()).unwrap();
+    // The account check runs alongside the file check and answers first.
+    let service = s.service(TestAuth {
+        name: "Player",
+        fail: Some(ErrorCode::NoGameAccess),
+        delay: Duration::ZERO,
+    });
+    let error = service
+        .launch_as(&Uuid::new_v4().to_string(), s.instance, account())
+        .await
+        .unwrap_err();
+    assert_eq!(error.code, ErrorCode::RepairRequired);
+    assert!(!marker(&s.f).exists());
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn one_game_at_a_time_and_stop_targets_the_owned_process() {
     let s = Setup::new().await;
     let service = s.service(auth("Sleeper"));
