@@ -3357,8 +3357,11 @@ skins-mod <channel>` there only checks the signature against the public key and
   `index.html` holds a silhouette of the shell (rail, title, chips, mosaic, launch bar)
   in the tokens' colors. A script the core adds before the page's own marks the
   document with `data-boot`, the saved theme and the direction, so the silhouette shows
-  only in the main window, in its theme and direction, until React replaces it. A
-  test keeps the two grounds equal to the tokens (`lifecycle/look.rs`).
+  only in the main window, in its theme and direction. While the core's state loads,
+  the interface keeps the same screen and bar beside its real rail, with no screen
+  marked current, instead of "Loading launcher state…" under Installations; the feed
+  then draws over it. Tests keep the two grounds equal to the tokens
+  (`lifecycle/look.rs`) and the interface's copy equal to index.html's.
 - **Verification:** screenshots in light, dark, Arabic and at the 820 px minimum width for
   each pull request; a Windows package for window changes (CLAUDE.md).
 

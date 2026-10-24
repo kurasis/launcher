@@ -64,9 +64,11 @@ html {
   background: var(--color-accent-soft);
 }
 
-/* The start placeholder in index.html: the shell's shape in the theme's colors
-   until the interface draws over it. Only the main window shows it; the core
-   marks that window's page with data-boot (src-tauri/src/lifecycle/look.rs). */
+/* The start placeholder: the shell's shape in the theme's colors until the
+   interface draws. index.html holds all of it, shown only in the main window,
+   whose page the core marks with data-boot (src-tauri/src/lifecycle/look.rs);
+   while the core's state loads, the interface repeats its screen and bar
+   (src/app/StartPlaceholder.tsx), so the shape stays until the feed comes. */
 .boot {
   display: none;
 }
@@ -77,7 +79,9 @@ html {
   min-height: 100vh;
 }
 
-.boot span {
+.boot span,
+.boot-screen span,
+.boot-bar span {
   display: block;
   border-radius: var(--radius-sm);
 }
@@ -109,21 +113,64 @@ html {
   min-height: 100vh;
 }
 
+/* As the shell's content area and the feed's screen lay out. */
 .boot-content {
   flex: 1;
-  display: grid;
-  align-content: start;
-  gap: var(--space-6);
   width: 100%;
   max-width: 76rem;
   margin: 0 auto;
   padding: var(--space-6) var(--space-8);
 }
 
-.boot-title {
-  width: 12rem;
+.boot-screen {
+  display: grid;
+  gap: var(--space-4);
+}
+
+.boot-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+}
+
+.boot-head > span {
+  width: 8rem;
   height: 1.75rem;
   background: var(--color-border-soft);
+}
+
+.boot-head > div {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.boot-head > div > span {
+  width: 9.5rem;
+  height: 2.25rem;
+  border-radius: var(--radius-md);
+  background: var(--color-border-soft);
+}
+
+.boot-head > div > span:last-child {
+  width: 6.75rem;
+}
+
+.boot-panels {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-3);
+}
+
+.boot-panels span,
+.boot-mosaic span {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+}
+
+.boot-panels span {
+  height: 7.5rem;
 }
 
 .boot-chips {
@@ -132,10 +179,14 @@ html {
 }
 
 .boot-chips span {
-  width: 6rem;
-  height: 2rem;
+  width: 5rem;
+  height: 1.75rem;
   border-radius: var(--radius-pill);
   background: var(--color-border-soft);
+}
+
+.boot-chips span:first-child {
+  width: 3rem;
 }
 
 .boot-mosaic {
@@ -152,14 +203,11 @@ html {
 
 .boot-mosaic span {
   height: 12rem;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-lg);
-  background: var(--color-surface);
 }
 
 /* Cards of different heights, as in the feed's mosaic. */
-.boot-mosaic > div:nth-child(2) > span:first-child {
-  height: 18rem;
+.boot-mosaic > div:first-child > span:first-child {
+  height: 20rem;
 }
 
 .boot-mosaic > div:nth-child(3) > span:last-child {

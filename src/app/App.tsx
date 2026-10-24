@@ -25,6 +25,7 @@ import { LaunchBar, type LaunchRequest } from './LaunchBar';
 import type { PaletteTarget } from './palette';
 import { QuitControl } from './QuitControl';
 import { RailUser } from './RailUser';
+import { StartBar, StartScreen } from './StartPlaceholder';
 import { BackupsView } from '../features/backups/BackupsView';
 import { GalleryView } from '../features/gallery/GalleryView';
 import { ReviewsView } from '../features/reviews/ReviewsView';
@@ -378,7 +379,8 @@ export function App() {
                 key={item}
                 type="button"
                 className={styles.navItem}
-                aria-current={view === item ? 'page' : undefined}
+                // No screen is current until the start screen is known.
+                aria-current={chosenView !== null && view === item ? 'page' : undefined}
                 title={strings.nav[item]}
                 onClick={() => {
                   navigate(item);
@@ -440,7 +442,13 @@ export function App() {
           {view === 'about' ? (
             <AboutView snapshot={snapshot} />
           ) : state.status === 'loading' ? (
-            <p role="status">{strings.bootstrap.loading}</p>
+            // The start placeholder stays until the start screen is known.
+            <>
+              <p role="status" className={styles.visuallyHidden}>
+                {strings.bootstrap.loading}
+              </p>
+              <StartScreen />
+            </>
           ) : state.status === 'error' ? (
             <Notice tone="danger">
               <p>
@@ -590,6 +598,7 @@ export function App() {
         <footer className={styles.footer}>
           <p>{strings.independentNotice}</p>
         </footer>
+        {state.status === 'loading' && <StartBar />}
         {snapshot !== null && (
           <LaunchBar
             snapshot={snapshot}
