@@ -2715,6 +2715,8 @@ export type Messages = {
       readonly trialFailed: string;
       readonly rolledBack: string;
       readonly open: string;
+      readonly fewer: string;
+      readonly more: (values: { count: string | number }) => string;
     };
     readonly devices: {
       readonly open: string;
@@ -2740,6 +2742,11 @@ export type Messages = {
       readonly meta: (values: { installation: string | number; game: string | number }) => string;
       readonly none: string;
       readonly importNamed: (values: { name: string | number }) => string;
+      readonly metaSize: (values: {
+        installation: string | number;
+        game: string | number;
+        size: string | number;
+      }) => string;
     };
     readonly roomActions: string;
     readonly you: string;
@@ -2747,6 +2754,11 @@ export type Messages = {
     readonly memberGone: string;
     readonly memberBanned: string;
     readonly modsFrom: (values: { name: string | number }) => string;
+    readonly memberPath: {
+      readonly direct: string;
+      readonly relay: string;
+    };
+    readonly modsGuests: string;
   };
   readonly metered: {
     readonly toggle: string;

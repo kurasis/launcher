@@ -32,7 +32,14 @@ import { WorldBackups } from './WorldBackups';
 import { WorldMods } from './WorldMods';
 import { WorldsStatus } from './WorldsStatus';
 import { useRoomActions, type RoomActionsApi } from './useRoomActions';
-import { ROOMS_EVERY_MS, activeRoom, roomMods, roomOpen, worldsErrorText } from './useWorlds';
+import {
+  ROOMS_EVERY_MS,
+  activeRoom,
+  guestPath,
+  roomMods,
+  roomOpen,
+  worldsErrorText,
+} from './useWorlds';
 import styles from './Worlds.module.css';
 
 const t = strings.worlds;
@@ -365,14 +372,20 @@ function Members({
   const heads = usePlayerHeads(members.map((m) => m.nick));
   const present = members.filter((m) => m.state === 'active');
   const former = members.filter((m) => m.state !== 'active');
-  // The players in the world this computer hosts, the host too.
-  const playing =
-    state.hosting?.room === room && state.hosting.ended === null ? state.hosting.players : [];
+  // Who is in the world: while this computer hosts it, its own live list, the host too,
+  // and nobody once it closed (the service may not know yet); else the guests
+  // worlds.lapi.sh knows in a session (the host's own game is not there).
+  const hosting = state.hosting?.room === room ? state.hosting : null;
   const known = friends?.signedIn === true ? friends.friends : [];
 
   const row = (member: WorldsMember) => {
     const active = member.state === 'active';
-    const here = active && playing.includes(member.nick);
+    const here =
+      active &&
+      (hosting === null
+        ? member.playing
+        : hosting.ended === null && hosting.players.includes(member.nick));
+    const path = here ? guestPath(state, room, member.nick) : null;
     const friend: FriendPerson | undefined = known.find((f) => f.id === member.account);
     const moderates = active && member.account !== me && RANK[member.role] < RANK[role];
     const question =
@@ -396,6 +409,8 @@ function Members({
           </div>
           {member.account === me ? (
             <span className={styles.rowMeta}>{t.you}</span>
+          ) : path !== null ? (
+            <span className={styles.rowMeta}>{t.memberPath[path]}</span>
           ) : (
             // In this world already says where the friend is.
             friend !== undefined && !here && <Presence person={friend} />

@@ -2,6 +2,7 @@ import { useEffect, useId, useRef, useState } from 'react';
 import { Button } from '../../components/Button';
 import { Notice } from '../../components/Notice';
 import { Panel } from '../../components/Panel';
+import { Tag } from '../../components/Tag';
 import { useFocusBack } from '../../components/useFocusBack';
 import { Field } from '../../components/Field';
 import forms from '../../components/forms.module.css';
@@ -14,6 +15,7 @@ import type {
   WorldsShownSetting,
   WorldsState,
   WorldsUpdatePreview,
+  WorldsWorldMod,
 } from '../../lib/contracts';
 import { formatBytes } from '../../lib/format';
 import { ipc } from '../../lib/ipc';
@@ -21,6 +23,52 @@ import { strings } from '../../lib/strings';
 import { isolate } from '../mods/helpers';
 import { worldsErrorText } from './useWorlds';
 import styles from './Worlds.module.css';
+
+/** The mods named before "and N more"; all of them on request, and all at once when
+ * only one would be left for the toggle. */
+const SHOWN = 4;
+
+/** The world's mods as the core read them, without entries that have no name. */
+function namedMods(list: unknown): WorldsWorldMod[] {
+  if (!Array.isArray(list)) return [];
+  return list.filter(
+    (mod: unknown): mod is WorldsWorldMod =>
+      typeof mod === 'object' &&
+      mod !== null &&
+      typeof (mod as { name?: unknown }).name === 'string' &&
+      (mod as { name: string }).name !== '',
+  );
+}
+
+/** A mod's version beside its name, unless unknown or already in the name (a jar's
+ * name such as "sodium-fabric-0.6.6"). */
+function versionOf(mod: WorldsWorldMod): string | null {
+  const version = mod.version;
+  if (typeof version !== 'string' || version === '') return null;
+  return mod.name.toLowerCase().includes(version.toLowerCase()) ? null : version;
+}
+
+/** "Sodium 0.6.6": the name and the version isolated each, as a title's own direction
+ * must not carry the version along; a mod only the server runs says so. */
+function ModTag({ mod }: { mod: WorldsWorldMod }) {
+  const version = versionOf(mod);
+  const server = mod.side === 'server';
+  return (
+    <Tag tone={server ? 'outline' : 'neutral'}>
+      {/* One line of text: a pill lays out its children apart, spaces dropped. */}
+      <span>
+        <bdi>{mod.name}</bdi>
+        {version !== null && (
+          <>
+            {' '}
+            <bdi>{version}</bdi>
+          </>
+        )}
+        {server && ` · ${strings.worlds.update.sides.server}`}
+      </span>
+    </Tag>
+  );
+}
 
 interface Props {
   room: string;
@@ -123,6 +171,34 @@ export function WorldMods({ room, world, state }: Props) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
+  const [mods, setMods] = useState<WorldsWorldMod[] | null>(null);
+  const [modsError, setModsError] = useState<string | null>(null);
+  const [all, setAll] = useState(false);
+  const modsId = useId();
+
+  // Read again once a change of the world has finished: an update or a first start's
+  // rollback (both get this room ready), a restore.
+  const generation = world.generation;
+  const changing = state.maintenance || state.preparing?.room === room;
+  useEffect(() => {
+    if (changing) return undefined;
+    let live = true;
+    ipc
+      .worldsWorldMods(world.id)
+      .then((list) => {
+        if (!live) return;
+        setMods(namedMods(list));
+        setModsError(null);
+      })
+      .catch((e: unknown) => {
+        if (live) setModsError(worldsErrorText(e));
+      });
+    return () => {
+      live = false;
+    };
+  }, [world.id, generation, changing]);
+
+  const folds = mods !== null && mods.length > SHOWN + 1;
 
   const kind = world.loader?.kind;
   useEffect(() => {
@@ -217,9 +293,35 @@ export function WorldMods({ room, world, state }: Props) {
           {t.current({ generation: world.generation, count: world.mods })}
         </p>
       )}
-      {from !== null && (
-        <p className={styles.panelHint}>{strings.worlds.modsFrom({ name: isolate(from) })}</p>
+      <p className={styles.panelHint}>
+        {from !== null && `${strings.worlds.modsFrom({ name: isolate(from) })} `}
+        {strings.worlds.modsGuests}
+      </p>
+      {mods !== null && mods.length > 0 && (
+        <div className={styles.modChips}>
+          <ul id={modsId} className={styles.chipList}>
+            {(all || !folds ? mods : mods.slice(0, SHOWN)).map((mod, index) => (
+              <li key={`${String(index)}:${mod.name}`}>
+                <ModTag mod={mod} />
+              </li>
+            ))}
+          </ul>
+          {folds && (
+            <button
+              type="button"
+              className={styles.link}
+              aria-expanded={all}
+              aria-controls={modsId}
+              onClick={() => {
+                setAll((now) => !now);
+              }}
+            >
+              {all ? t.fewer : t.more({ count: mods.length - SHOWN })}
+            </button>
+          )}
+        </div>
       )}
+      {modsError !== null && <p className={styles.panelHint}>{modsError}</p>}
       {world.updatePending && <Notice tone="info">{t.pending}</Notice>}
       {open && (
         <div id={toolsId} className={styles.tools}>

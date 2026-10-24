@@ -621,3 +621,43 @@
   flex: 1 1 12rem;
   min-inline-size: 0;
 }
+
+/* The world's mods by name, the first few and the rest on request. */
+.modChips {
+  display: grid;
+  justify-items: start;
+  gap: var(--space-2);
+}
+
+.chipList {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* Underlined, so it reads as a link beside muted text and in contrast themes too. */
+.link {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--color-accent-text);
+  font: inherit;
+  font-size: var(--font-size-sm);
+  text-align: start;
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
+  cursor: pointer;
+}
+
+.link:hover {
+  text-decoration-thickness: 2px;
+}
+
+@media (forced-colors: active) {
+  .link {
+    color: LinkText;
+  }
+}

@@ -130,17 +130,19 @@ export function WorldsView({ snapshot, onOpenAccounts, initialRoom = null }: Pro
     if (signedIn && hostingRoom !== null) load();
   }, [signedIn, hostingRoom, load]);
 
-  // A world played for the first time, restored or imported shows at once.
-  const changing = useRef(state.maintenance);
+  // A world played for the first time, restored, imported, or with its mods updated or
+  // rolled back (that gets its room ready) shows at once.
+  const busy = state.maintenance || state.preparing !== null;
+  const changing = useRef(busy);
   useEffect(() => {
-    if (changing.current && !state.maintenance) {
+    if (changing.current && !busy) {
       void ipc
         .worldsLocal()
         .then(setLocal)
         .catch(() => undefined);
     }
-    changing.current = state.maintenance;
-  }, [state.maintenance]);
+    changing.current = busy;
+  }, [busy]);
 
   if (!signedIn) {
     return (
