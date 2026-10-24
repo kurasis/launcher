@@ -1,165 +1,184 @@
-/* The console is always dark, like a terminal, whatever the launcher theme. */
+/* The console window in concept A: the toolbar and the status line on the surface, the
+   log on the page ground, in the launcher's theme. */
 .shell {
-  --console-bg: #0d1117;
-  --console-panel: #161b22;
-  --console-border: #30363d;
-  --console-text: #d6dde6;
-  --console-muted: #8b949e;
-  --console-accent: #3fb950;
-  --console-launcher: #58a6ff;
-  --console-warn: #e3b341;
-  --console-error: #ff7b72;
-
   display: flex;
   flex-direction: column;
-  height: 100vh;
-  background: var(--console-bg);
-  color: var(--console-text);
-  color-scheme: dark;
+  block-size: 100vh;
+  min-inline-size: 0;
+  background: var(--color-bg);
+  color: var(--color-text);
+}
+
+/* The window never scrolls as a page: no empty gutter beside the bands (global.css
+   keeps one for the main window). */
+:global(html):has(.shell) {
+  scrollbar-gutter: auto;
 }
 
 .toolbar {
+  flex: none;
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 0.5rem;
-  padding: 0.5rem 0.75rem;
-  background: var(--console-panel);
-  border-bottom: 1px solid var(--console-border);
+  gap: var(--space-2);
+  min-block-size: 3.25rem;
+  padding: var(--space-2) var(--space-4);
+  background: var(--color-surface);
+  border-block-end: 1px solid var(--color-border);
 }
 
 .title {
-  margin: 0 0.5rem 0 0;
-  font-size: 0.95rem;
-  font-weight: 800;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--console-accent);
-}
-
-.segments {
-  display: inline-flex;
-  border: 1px solid var(--console-border);
-  border-radius: 6px;
-  overflow: hidden;
-}
-
-.segment {
-  font: inherit;
-  font-size: 0.8rem;
-  padding: 0.3rem 0.65rem;
-  border: none;
-  background: transparent;
-  color: var(--console-muted);
-  cursor: pointer;
-}
-
-.segment[aria-pressed='true'] {
-  background: var(--console-border);
-  color: var(--console-text);
-}
-
-.control {
-  font: inherit;
-  font-size: 0.8rem;
-  padding: 0.3rem 0.6rem;
-  border: 1px solid var(--console-border);
-  border-radius: 6px;
-  background: var(--console-bg);
-  color: var(--console-text);
-  cursor: pointer;
-}
-
-.control:focus-visible,
-.segment:focus-visible {
-  outline: 2px solid var(--console-accent);
-  outline-offset: 1px;
+  margin: 0;
+  margin-inline-end: var(--space-1);
+  font-size: var(--font-size-md);
+  font-weight: 600;
+  line-height: 1.2;
 }
 
 .search {
-  flex: 1 1 12rem;
-  min-width: 8rem;
-  cursor: text;
+  position: relative;
+  flex: 1 1 9rem;
+  min-inline-size: 9rem;
 }
 
-.follow {
-  display: inline-flex;
+.searchIcon {
+  position: absolute;
+  inset-block: 0;
+  inset-inline-start: var(--space-3);
+  margin-block: auto;
+  color: var(--color-text-muted);
+  pointer-events: none;
+}
+
+.searchInput {
+  inline-size: 100%;
+  padding-inline-start: calc(var(--space-8) + var(--space-1));
+}
+
+.searchInput::placeholder {
+  color: var(--color-text-muted);
+  opacity: 1;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 0.3rem;
-  font-size: 0.8rem;
-  color: var(--console-muted);
+  gap: var(--space-2) var(--space-3);
+  margin-inline-start: auto;
 }
 
-.banner {
-  margin: 0;
-  padding: 0.35rem 0.75rem;
-  font-size: 0.8rem;
-  background: #2d2208;
-  color: var(--console-warn);
-  border-bottom: 1px solid var(--console-border);
+.notices {
+  flex: none;
+  display: grid;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-4) 0;
 }
 
 .lines {
   flex: 1 1 auto;
-  min-height: 0;
+  min-block-size: 0;
   overflow: auto;
-  padding: 0.4rem 0;
-  font-family: var(--font-mono, ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace);
-  font-size: 0.78rem;
-  line-height: 1.45;
+  padding: var(--space-2) 0;
+  font-family: var(--font-mono);
+  font-size: var(--font-size-xs);
+  line-height: 1.5;
+  scrollbar-color: var(--color-border-strong) transparent;
+}
+
+/* Fixed columns: a new line never lays the kept ones out again. */
+/* The log spans the window: its focus ring is drawn inside it. */
+.lines:focus-visible {
+  outline-offset: -2px;
 }
 
 .line {
   display: grid;
-  grid-template-columns: auto auto minmax(0, 1fr);
-  gap: 0.75rem;
-  padding: 0 0.75rem;
+  grid-template-columns: 12ch 5.5rem minmax(0, 1fr);
+  column-gap: var(--space-3);
+  align-items: baseline;
+  padding: 0.125rem var(--space-4);
 }
 
 .line:hover {
-  background: var(--console-panel);
+  background: var(--color-hover);
 }
 
 .time {
-  color: var(--console-muted);
+  color: var(--color-text-muted);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 
 .tag {
-  min-width: 5.5em;
-  color: var(--console-accent);
+  justify-self: start;
+  max-inline-size: 100%;
+  overflow: hidden;
+  padding: 0 var(--space-2);
+  border-radius: calc(var(--radius-sm) / 2);
+  background: var(--color-neutral-bg);
+  color: var(--color-neutral-text);
+  font-family: var(--font-sans);
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  line-height: 1.4;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .line[data-source='launcher'] .tag {
-  color: var(--console-launcher);
+  background: var(--color-success-bg);
+  color: var(--color-success-text);
 }
 
 .text {
+  min-inline-size: 0;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
 
+/* What the game wrote to its error stream, a shade quieter; levels win over it. */
 .line[data-stderr='true'] .text {
-  color: #c9b8a6;
+  color: var(--color-text-2);
 }
 
 .line[data-level='warn'] .text {
-  color: var(--console-warn);
+  color: var(--color-warning-text);
 }
 
 .line[data-level='error'] .text {
-  color: var(--console-error);
+  color: var(--color-danger-text);
 }
 
 .empty {
-  margin: 1rem 0.75rem;
-  color: var(--console-muted);
-  font-family: inherit;
+  margin: var(--space-4);
+  color: var(--color-text-muted);
+  font-family: var(--font-sans);
+  font-size: var(--font-size-sm);
+  white-space: normal;
 }
 
 .status {
-  padding: 0.25rem 0.75rem;
-  font-size: 0.75rem;
-  color: var(--console-muted);
-  background: var(--console-panel);
-  border-top: 1px solid var(--console-border);
+  flex: none;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-4);
+  min-block-size: 2rem;
+  padding: var(--space-1) var(--space-4);
+  background: var(--color-surface);
+  border-block-start: 1px solid var(--color-border);
+  color: var(--color-text-muted);
+  font-size: var(--font-size-xs);
+  font-variant-numeric: tabular-nums;
+}
+
+.keeps {
+  margin-inline-start: auto;
+}
+
+@media (forced-colors: active) {
+  .tag {
+    border: 1px solid CanvasText;
+  }
 }

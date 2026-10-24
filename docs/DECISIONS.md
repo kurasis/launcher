@@ -3251,6 +3251,11 @@ skins-mod <channel>` there only checks the signature against the public key and
   wait for data from the mods thread. A question (turn off a needed mod, remove a file)
   opens in place under its row; Cancel always closes it, and the focus goes back to what
   asked.
+- **Console window:** it follows the launcher's theme instead of staying dark: the main
+  window keeps the theme in local storage for it, as it does the language (D-038). The
+  source tags read "Launcher" and "Game" on screen and stay in capitals only in copied
+  text; the time keeps its milliseconds; the status line says how many lines the console
+  keeps. The game's run time on that line waits for `read_console` to carry the run.
 - **Order:** tokens and shell, then Installations and the launch bar, the new
   installation form, the feed, the catalog, the mod page and the remaining screens, each
   in its own pull request. Features the new screens need from a service go to the thread

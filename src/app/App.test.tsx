@@ -409,6 +409,8 @@ describe('App', () => {
     await waitFor(() => {
       expect(document.documentElement.dataset.theme).toBe('dark');
     });
+    // Kept for the next start's first paint and for the console window.
+    expect(window.localStorage.getItem('launcher.theme')).toBe('dark');
     await act(async () => {
       await Promise.resolve();
     });

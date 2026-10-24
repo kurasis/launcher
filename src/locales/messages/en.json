@@ -1498,7 +1498,9 @@
         "launcher": "LAUNCHER",
         "game": "GAME"
       },
-      "windowTitle": "Launcher console"
+      "windowTitle": "Launcher console",
+      "logLabel": "Launcher and game output",
+      "keeps": "The console keeps the newest {count, plural, one {# line} other {# lines}}"
     },
     "diagnostics": {
       "recentTitle": "Recent operations",

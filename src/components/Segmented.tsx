@@ -19,6 +19,8 @@ interface SegmentedProps<T extends string | boolean> {
   /** A change is being saved: the choices wait, but keep the focus (a disabled
    * control loses it in WebView2 and WebKit). */
   pending?: boolean;
+  /** Each choice only as wide as its words, for a toolbar. */
+  compact?: boolean;
   onChange: (value: T) => void;
 }
 
@@ -32,6 +34,7 @@ export function Segmented<T extends string | boolean>({
   value,
   disabled = false,
   pending = false,
+  compact = false,
   onChange,
 }: SegmentedProps<T>) {
   const buttons = useRef(new Map<T, HTMLButtonElement>());
@@ -45,7 +48,7 @@ export function Segmented<T extends string | boolean>({
   const stop = options.some((option) => option.value === value) ? value : options[0]?.value;
   return (
     <div
-      className={styles.segmented}
+      className={[styles.segmented, compact && styles.compact].filter(Boolean).join(' ')}
       role="radiogroup"
       aria-label={label}
       aria-busy={pending || undefined}

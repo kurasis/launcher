@@ -1499,7 +1499,9 @@
         "launcher": "المشغّل",
         "game": "اللعبة"
       },
-      "windowTitle": "وحدة تحكم المشغّل"
+      "windowTitle": "وحدة تحكم المشغّل",
+      "logLabel": "مخرجات المشغّل واللعبة",
+      "keeps": "تحتفظ وحدة التحكم بأحدث {count, plural, zero {# سطر} one {سطر واحد} two {سطرين} few {# أسطر} many {# سطرًا} other {# سطر}}"
     },
     "diagnostics": {
       "recentTitle": "العمليات الأخيرة",

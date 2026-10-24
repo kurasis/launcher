@@ -1498,7 +1498,9 @@
         "launcher": "ЛАУНЧЕР",
         "game": "ИГРА"
       },
-      "windowTitle": "Консоль лаунчера"
+      "windowTitle": "Консоль лаунчера",
+      "logLabel": "Вывод лаунчера и игры",
+      "keeps": "Консоль хранит последние {count, plural, one {# строку} few {# строки} many {# строк} other {# строки}}"
     },
     "diagnostics": {
       "recentTitle": "Последние операции",

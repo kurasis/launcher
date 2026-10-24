@@ -8,6 +8,7 @@ import './styles/tokens.css';
 import './styles/global.css';
 import { loadLanguage, setLanguage, storedLanguage } from './lib/strings';
 import { reportFrontendError } from './lib/ipc';
+import { applyTheme, storedTheme } from './lib/theme';
 
 // Errors in the window's code are kept in the launcher's records (D-061).
 window.addEventListener('error', (event) => {
@@ -60,7 +61,9 @@ async function windowContent() {
   return <App />;
 }
 
-// The last chosen language until the core's settings arrive (D-038).
+// The last chosen theme and language until the core's settings arrive (D-038); the
+// console window, which never gets settings, keeps following them (ConsoleApp).
+applyTheme(storedTheme());
 void loadLanguage(storedLanguage())
   .then(setLanguage, () => {
     setLanguage('en');
