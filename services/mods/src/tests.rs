@@ -3975,6 +3975,71 @@ fn sodium_release_is(t: &T, bytes: &[u8]) {
 }
 
 #[tokio::test]
+async fn a_project_with_too_many_versions_comes_without_changelogs_but_its_newest() {
+    let t = setup();
+    modrinth_site(&t.sites);
+    let full: Value = serde_json::from_slice(
+        &t.sites.pages.lock().unwrap()[&modrinth::versions_url(SODIUM)].body,
+    )
+    .unwrap();
+    // Past the bound with its changelogs; the list without them is small.
+    t.sites.put(
+        &modrinth::versions_url(SODIUM),
+        ok("x".repeat(17 * 1024 * 1024).into_bytes()),
+    );
+    t.sites
+        .json(&modrinth::versions_url_short(SODIUM), full.clone());
+    let listed: Vec<_> = full
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter_map(modrinth::version)
+        .collect();
+    let newest: Vec<String> = model::newest_per_pair(&listed)
+        .into_iter()
+        .map(|i| listed[i].source_id.clone())
+        .collect();
+    assert!(!newest.is_empty() && newest.len() < listed.len());
+    let answer: Vec<Value> = full
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|v| newest.iter().any(|n| v["id"] == n.as_str()))
+        .map(|v| {
+            let mut v = v.clone();
+            v["changelog"] = json!(format!("Notes for {}", v["id"].as_str().unwrap()));
+            v
+        })
+        .collect();
+    t.sites
+        .json(&modrinth::versions_by_ids_url(&newest), json!(answer));
+    t.player(
+        1,
+        "POST",
+        "/v1/imports",
+        json!({ "input": "https://modrinth.com/mod/sodium" }),
+    )
+    .await;
+    t.drain().await;
+
+    let (_, list) = t.get("/v1/projects/sodium/versions").await;
+    let list = list["versions"].as_array().unwrap();
+    assert_eq!(list.len(), listed.len(), "{list:?}");
+    let mut noted = 0;
+    for v in list {
+        let (_, version) = t
+            .get(&format!("/v1/versions/{}", v["id"].as_str().unwrap()))
+            .await;
+        let changelog = version["changelog"].as_str().unwrap_or_default().to_owned();
+        if !changelog.is_empty() {
+            assert!(changelog.contains("Notes for"), "{changelog}");
+            noted += 1;
+        }
+    }
+    assert_eq!(noted, newest.len());
+}
+
+#[tokio::test]
 async fn a_suspicious_file_is_held_back_and_put_before_the_owner() {
     let t = setup();
     modrinth_site(&t.sites);

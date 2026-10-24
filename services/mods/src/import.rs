@@ -756,18 +756,30 @@ async fn project(
         app.store
             .set_request(request, "importing", None, Some(&id), None, now())?;
     }
-    let list = app
-        .client
-        .json(&modrinth::versions_url(&source_id))
-        .await?
-        .ok_or_else(|| JobError::new("not_found", false))?;
-    let versions: Vec<_> = list
+    // A project with very many versions is past our bound with their
+    // changelogs (Crash Assistant: 1,691 versions, 52 MB): its list comes
+    // without them, the changelogs kept here stay, and the newest versions'
+    // are asked for in groups.
+    let (list, whole) = match app.client.json(&modrinth::versions_url(&source_id)).await {
+        Err(FetchError::TooBig) => (
+            app.client
+                .json(&modrinth::versions_url_short(&source_id))
+                .await?,
+            false,
+        ),
+        other => (other?, true),
+    };
+    let list = list.ok_or_else(|| JobError::new("not_found", false))?;
+    let mut versions: Vec<_> = list
         .as_array()
         .into_iter()
         .flatten()
         .filter_map(modrinth::version)
         .take(5000)
         .collect();
+    if !whole {
+        changelogs_apart(app, &id, &mut versions).await?;
+    }
     let ids = app.store.upsert_versions(&id, source, &versions)?;
     // Versions the source no longer lists stay here, marked.
     for (ours, theirs) in app.store.version_sources(&id, source)? {
@@ -801,6 +813,46 @@ async fn project(
         pictures(app, &id, &found)?;
     }
     app.store.set_project_status(&id, "ready")?;
+    Ok(())
+}
+
+/// Versions asked for at once by their IDs.
+const CHANGELOGS_AT_ONCE: usize = 50;
+
+/// Changelogs for a list that came without them: those kept here, and the
+/// newest versions' (one per game version and loader) from Modrinth. Good to
+/// have: a group that does not come leaves its versions' changelogs empty.
+async fn changelogs_apart(
+    app: &App,
+    project: &str,
+    versions: &mut [crate::model::SourceVersion],
+) -> Result<(), JobError> {
+    let kept = app.store.changelogs(project, modrinth::SOURCE)?;
+    for version in versions.iter_mut() {
+        if let Some(changelog) = kept.get(&version.source_id) {
+            version.changelog.clone_from(changelog);
+        }
+    }
+    let wanted: Vec<String> = crate::model::newest_per_pair(versions)
+        .into_iter()
+        .map(|i| versions[i].source_id.clone())
+        .take(MAX_DEPENDENCIES)
+        .collect();
+    for group in wanted.chunks(CHANGELOGS_AT_ONCE) {
+        let Ok(Some(answer)) = app.client.json(&modrinth::versions_by_ids_url(group)).await else {
+            continue;
+        };
+        for full in answer
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(modrinth::version)
+        {
+            if let Some(version) = versions.iter_mut().find(|v| v.source_id == full.source_id) {
+                version.changelog = full.changelog;
+            }
+        }
+    }
     Ok(())
 }
 

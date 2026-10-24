@@ -37,6 +37,18 @@ pub fn versions_url(id: &str) -> String {
     format!("{API}/project/{}/version", path_part(id))
 }
 
+/// The same list without changelogs: for a project whose whole list is past
+/// our bound.
+pub fn versions_url_short(id: &str) -> String {
+    format!("{}?include_changelog=false", versions_url(id))
+}
+
+/// Versions by their IDs, changelogs included.
+pub fn versions_by_ids_url(ids: &[String]) -> String {
+    let list = serde_json::to_string(ids).unwrap_or_default();
+    format!("{API}/versions?ids={}", path_part(&list))
+}
+
 pub fn version_url(id: &str) -> String {
     format!("{API}/version/{}", path_part(id))
 }
