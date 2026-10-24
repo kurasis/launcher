@@ -24,6 +24,10 @@
   cursor: pointer;
 }
 
+.compact button {
+  min-width: 0;
+}
+
 .segmented button[aria-checked='true'] {
   border-color: var(--color-accent);
   background: var(--color-surface);

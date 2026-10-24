@@ -1,8 +1,15 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { Button } from '../../components/Button';
+import { Choice } from '../../components/Choice';
+import { Icon } from '../../components/Icon';
+import { Notice } from '../../components/Notice';
+import { Segmented } from '../../components/Segmented';
+import forms from '../../components/forms.module.css';
 import type { ConsoleEntry } from '../../lib/contracts';
 import { ipc } from '../../lib/ipc';
 import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow';
-import { LANGUAGE_STORAGE_KEY, storedLanguage, strings } from '../../lib/strings';
+import { direction, LANGUAGE_STORAGE_KEY, storedLanguage, strings } from '../../lib/strings';
+import { applyTheme, storedTheme, THEME_STORAGE_KEY } from '../../lib/theme';
 import { useLanguage } from '../../lib/useLanguage';
 import styles from './ConsoleApp.module.css';
 
@@ -13,6 +20,8 @@ const POLL_MS = 300;
 const KEEP = 10_000;
 /** A full page from the core means more is waiting: ask again at once. */
 const CORE_PAGE = 2_000;
+/** The longest filter text: it is matched against every kept line on each change. */
+const QUERY_MAX_LENGTH = 200;
 
 type SourceFilter = 'all' | 'launcher' | 'game';
 type LevelFilter = 'all' | 'warn' | 'error';
@@ -23,6 +32,7 @@ function time(at: string): string {
   return `${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}.${pad(date.getMilliseconds(), 3)}`;
 }
 
+/** A line as copied: the tag in capitals marks the source in plain text. */
 function line(entry: ConsoleEntry): string {
   return `${time(entry.at)} ${t.sourceTag[entry.source]} ${entry.text}`;
 }
@@ -37,18 +47,23 @@ export function ConsoleApp() {
   const [query, setQuery] = useState('');
   const [follow, setFollow] = useState(true);
   const [copied, setCopied] = useState<'no' | 'yes' | 'failed'>('no');
+  const copyTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
   const list = useRef<HTMLDivElement>(null);
-  // The console has no access to settings; it follows the language the main
-  // window mirrors into local storage (D-038).
+  // The console has no access to settings; it follows the language and the theme the
+  // main window mirrors into local storage (D-038).
   const [wanted, setWanted] = useState(storedLanguage);
   const lang = useLanguage(wanted);
   useEffect(() => {
     const onStorage = (event: StorageEvent) => {
       if (event.key === LANGUAGE_STORAGE_KEY) setWanted(storedLanguage());
+      if (event.key === THEME_STORAGE_KEY) applyTheme(storedTheme());
     };
     window.addEventListener('storage', onStorage);
+    // A theme kept after this window's first paint, before it listened.
+    applyTheme(storedTheme());
     return () => {
       window.removeEventListener('storage', onStorage);
+      clearTimeout(copyTimer.current);
     };
   }, []);
   useEffect(() => {
@@ -121,7 +136,9 @@ export function ConsoleApp() {
         },
       )
       .finally(() => {
-        setTimeout(() => {
+        // A second press shows its own answer for the whole time.
+        clearTimeout(copyTimer.current);
+        copyTimer.current = setTimeout(() => {
           setCopied('no');
         }, 1500);
       });
@@ -131,24 +148,19 @@ export function ConsoleApp() {
     <div className={styles.shell}>
       <header className={styles.toolbar}>
         <h1 className={styles.title}>{t.title}</h1>
-        <div role="group" aria-label={t.sourceLabel} className={styles.segments}>
-          {(['all', 'launcher', 'game'] as const).map((item) => (
-            <button
-              key={item}
-              type="button"
-              aria-pressed={source === item}
-              className={styles.segment}
-              onClick={() => {
-                setSource(item);
-              }}
-            >
-              {t.sources[item]}
-            </button>
-          ))}
-        </div>
+        <Segmented
+          label={t.sourceLabel}
+          options={(['all', 'launcher', 'game'] as const).map((item) => ({
+            value: item,
+            label: t.sources[item],
+          }))}
+          value={source}
+          compact
+          onChange={setSource}
+        />
         <select
           aria-label={t.levelLabel}
-          className={styles.control}
+          className={forms.select}
           value={level}
           onChange={(event) => {
             setLevel(event.target.value as LevelFilter);
@@ -160,52 +172,68 @@ export function ConsoleApp() {
             </option>
           ))}
         </select>
-        <input
-          type="search"
-          aria-label={t.search}
-          placeholder={t.search}
-          className={[styles.control, styles.search].join(' ')}
-          value={query}
-          onChange={(event) => {
-            setQuery(event.target.value);
-          }}
-        />
-        <label className={styles.follow}>
+        <div className={styles.search}>
+          <Icon name="search" size={16} className={styles.searchIcon} />
           <input
+            type="search"
+            aria-label={t.search}
+            placeholder={t.search}
+            className={[forms.input, styles.searchInput].join(' ')}
+            maxLength={QUERY_MAX_LENGTH}
+            autoComplete="off"
+            spellCheck={false}
+            value={query}
+            onChange={(event) => {
+              setQuery(event.target.value.slice(0, QUERY_MAX_LENGTH));
+            }}
+          />
+        </div>
+        {/* What acts on the shown lines stays together at the end, on a row of its own
+            in a narrow window. */}
+        <div className={styles.actions}>
+          <Choice
             type="checkbox"
+            title={t.follow}
             checked={follow}
             onChange={(event) => {
               setFollow(event.target.checked);
             }}
           />
-          {t.follow}
-        </label>
-        <button type="button" className={styles.control} onClick={copy}>
-          {copied === 'yes' ? t.copied : copied === 'failed' ? t.copyFailed : t.copy}
-        </button>
-        <button
-          type="button"
-          className={styles.control}
-          onClick={() => {
-            setEntries([]);
-            setMissed(0);
-          }}
-        >
-          {t.clear}
-        </button>
+          <Button size="small" onClick={copy}>
+            <Icon name="copy" size={18} />
+            {copied === 'yes' ? t.copied : copied === 'failed' ? t.copyFailed : t.copy}
+          </Button>
+          <Button
+            size="small"
+            onClick={() => {
+              setEntries([]);
+              setMissed(0);
+            }}
+          >
+            {t.clear}
+          </Button>
+        </div>
       </header>
-      {offline && (
-        <p role="alert" className={styles.banner}>
-          {t.unreachable}
-        </p>
+      {(offline || missed > 0) && (
+        <div className={styles.notices}>
+          {offline && <Notice tone="danger">{t.unreachable}</Notice>}
+          {/* The count can grow on every read: shown, not read out each time. */}
+          {missed > 0 && (
+            <Notice tone="warning" live={false}>
+              {t.missed({ count: missed })}
+            </Notice>
+          )}
+        </div>
       )}
-      {missed > 0 && <p className={styles.banner}>{t.missed({ count: missed })}</p>}
+      {/* Times, Java output and the core's lines read left to right in every language. */}
       <div
         ref={list}
         className={styles.lines}
         dir="ltr"
         role="log"
+        aria-label={t.logLabel}
         aria-live="off"
+        tabIndex={0}
         onScroll={(event) => {
           const element = event.currentTarget;
           const atBottom = element.scrollHeight - element.scrollTop - element.clientHeight < 24;
@@ -213,7 +241,9 @@ export function ConsoleApp() {
         }}
       >
         {shown.length === 0 && (
-          <p className={styles.empty}>{entries.length === 0 ? t.empty : t.noMatch}</p>
+          <p className={styles.empty} dir={direction()}>
+            {entries.length === 0 ? t.empty : t.noMatch}
+          </p>
         )}
         {shown.map((entry) => (
           <div
@@ -224,13 +254,15 @@ export function ConsoleApp() {
             data-stderr={entry.stderr === true ? 'true' : undefined}
           >
             <span className={styles.time}>{time(entry.at)}</span>
-            <span className={styles.tag}>{t.sourceTag[entry.source]}</span>
+            <span className={styles.tag}>{t.sources[entry.source]}</span>
             <span className={styles.text}>{entry.text}</span>
           </div>
         ))}
       </div>
+      {/* Not a live region: the count changes on every read. */}
       <footer className={styles.status}>
-        {t.count({ shown: shown.length, total: entries.length })}
+        <span>{t.count({ shown: shown.length, total: entries.length })}</span>
+        <span className={styles.keeps}>{t.keeps({ count: KEEP })}</span>
       </footer>
     </div>
   );
