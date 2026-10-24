@@ -3985,7 +3985,7 @@ async fn a_project_with_too_many_versions_comes_without_changelogs_but_its_newes
     // Past the bound with its changelogs; the list without them is small.
     t.sites.put(
         &modrinth::versions_url(SODIUM),
-        ok("x".repeat(17 * 1024 * 1024).into_bytes()),
+        ok("x".repeat(fetch::JSON_MAX as usize + 1).into_bytes()),
     );
     t.sites
         .json(&modrinth::versions_url_short(SODIUM), full.clone());
@@ -7386,6 +7386,25 @@ async fn health_names_its_problems_in_words_and_numbers() {
     );
     assert!(
         lines.iter().any(|l| l.starts_with("popular problem")),
+        "{lines:?}"
+    );
+    // One import past a bound of ours is a problem by itself.
+    t.app
+        .store
+        .enqueue("big", "project", &json!({}), None, None, owner.now, None)
+        .unwrap();
+    let id: i64 = rusqlite::Connection::open(t.app.store.path())
+        .unwrap()
+        .query_row("SELECT id FROM job WHERE key = 'big'", [], |r| r.get(0))
+        .unwrap();
+    t.app
+        .store
+        .job_failed(id, "too_big", None, owner.now)
+        .unwrap();
+    let lines = owner.health(50, &backups).unwrap();
+    assert_eq!(lines.last().unwrap(), "problems 3", "{lines:?}");
+    assert!(
+        lines.contains(&"bounds problem 1 too big in a day".to_owned()),
         "{lines:?}"
     );
     for line in &lines {

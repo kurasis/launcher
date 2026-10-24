@@ -193,7 +193,8 @@ addresses, or `["--status"]`), `task=slug` runs `slug` (`["<project>", "<slug>"]
 `health` runs every morning in the workflow Mods health; a problem fails the run, and
 GitHub mails it. It checks: a job due over 12 hours and still waiting (`queue`); at
 least 20 failed jobs in a day and over a quarter of them (`imports`); at least 5 failed
-requests to add projects in a day and over half (`requests`); a review open over 3
+requests to add projects in a day and over half (`requests`); any job failed in a day
+because an answer or file was past a bound of ours (`bounds`); a review open over 3
 days (`review`); free disk under twice the reserve or kept files over 90% of the quota
 (`disk`); no copy of the database in `data/backups` made in 2 days (`backups`);
 VirusTotal's background over 90% of its month (`virustotal`); a wrong copy in

@@ -432,7 +432,7 @@ pub struct Client {
     resolver: Resolver,
 }
 
-const JSON_MAX: u64 = 16 * 1024 * 1024;
+pub const JSON_MAX: u64 = 64 * 1024 * 1024;
 const REST: Duration = Duration::from_secs(3600);
 const DOWN: Duration = Duration::from_secs(600);
 

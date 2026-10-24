@@ -879,6 +879,12 @@ impl Owner<'_> {
             ),
             format!("{} done, {} failed in a day", h.jobs_done, h.jobs_failed),
         );
+        // Any of them: a bound of ours is too small for something real.
+        check(
+            "bounds",
+            Some(h.too_big == 0),
+            format!("{} too big in a day", h.too_big),
+        );
         check(
             "requests",
             Some(!(h.requests_failed >= REQUESTS_FAILING && h.requests_failed * 2 > h.requests)),
