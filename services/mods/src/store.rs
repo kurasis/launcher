@@ -1008,6 +1008,9 @@ pub struct Health {
     /// last looked for (0: never).
     pub database_copied: i64,
     pub popular_seeded: i64,
+    /// Jobs failed in the last day because an answer or file was past a
+    /// bound of ours: a project or file the catalog could not take.
+    pub too_big: i64,
 }
 
 /// A project the owner added from a site that is not a catalog.
@@ -2834,6 +2837,10 @@ impl Store {
             r2_mismatched: upkeep("r2_mismatched")?,
             database_copied: upkeep("database_copied")?,
             popular_seeded: upkeep("popular_seeded")?,
+            too_big: one(
+                "SELECT count(*) FROM job WHERE state = 'failed' AND error = 'too_big' AND finished >= ?1",
+                since,
+            )?,
         })
     }
 

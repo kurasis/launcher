@@ -2550,6 +2550,9 @@ skins-mod <channel>` there only checks the signature against the public key and
   16 MB bound for an answer, so its import failed and the pack's file had no card.
   Such a list is asked again without changelogs (1.5 MB); the changelogs kept here stay,
   and the newest versions' (one per game version and loader) are asked for 50 at a time.
+  The bound for an answer is 64 MB since (was 16), and the daily health check
+  (`lapi-mods health`, Mods health workflow) counts jobs failed as too big in the last
+  day: one is a problem, so the run fails and GitHub mails it.
 - **Name search.** A name asks both sources: Modrinth's search API and CurseForge's
   search page (its API search is refused). The page's hits are read from the App Router
   stream (objects with a numeric ID, a slug, a name and a class we keep, Minecraft
