@@ -5,8 +5,9 @@ import cpw.mods.fml.relauncher.IFMLLoadingPlugin;
 
 /**
  * FML loads this from the jar manifest before the game starts. It only names the
- * transformer; the mod itself is {@code app.launcher.skins.forge.ForgeEntry}. The sorting
- * index puts the transformer after FML's own, so it sees the game's classes with their
+ * transformers: the skins, and the sound start that Forge's double reload breaks. The
+ * mod itself is {@code app.launcher.skins.forge.ForgeEntry}. The sorting index puts the
+ * transformers after FML's own, so they see the game's classes with their
  * deobfuscated class names and SRG method names.
  */
 @IFMLLoadingPlugin.MCVersion("1.7.10")
@@ -16,7 +17,9 @@ import cpw.mods.fml.relauncher.IFMLLoadingPlugin;
 public final class LoadingPlugin implements IFMLLoadingPlugin {
     @Override
     public String[] getASMTransformerClass() {
-        return new String[] {"app.launcher.skins.coremod.SkinTransformer"};
+        return new String[] {
+            "app.launcher.skins.coremod.SkinTransformer", "app.launcher.skins.coremod.SoundTransformer"
+        };
     }
 
     @Override
