@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { emit } from '@tauri-apps/api/event';
 import { mockIPC } from '@tauri-apps/api/mocks';
 import { describe, expect, it } from 'vitest';
@@ -76,7 +76,13 @@ describe('QuitControl', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Cancel' }));
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Quit' }));
-    fireEvent.keyDown(await screen.findByRole('dialog'), { key: 'Escape' });
+    // The answer opens it again outside act(), and the dialog hears Escape from its
+    // effect, which can run a task after it shows: it is ready once it holds the focus.
+    const keep = await screen.findByRole('button', { name: 'Keep running in background' });
+    await waitFor(() => {
+      expect(keep).toHaveFocus();
+    });
+    fireEvent.keyDown(keep, { key: 'Escape' });
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     expect(actions).toEqual(['quit', 'quit']);
   });

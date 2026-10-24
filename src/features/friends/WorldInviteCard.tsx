@@ -1,4 +1,4 @@
-import { type RefObject, useEffect, useRef, useState } from 'react';
+import { type RefObject, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Button } from '../../components/Button';
 import type { WorldsPreview, WorldsProblem } from '../../lib/contracts';
 import { ipc, worldsProblemOf } from '../../lib/ipc';
@@ -158,8 +158,9 @@ export function WorldInviteCard({
   }, [seen, code]);
 
   // Look went with the answer (the facts came, or the code was refused): the focus goes
-  // to what the card offers now, or to the card itself.
-  useEffect(() => {
+  // to what the card offers now, or to the card itself. In the same commit, before it is
+  // painted: the page never shows with the focus dropped on it.
+  useLayoutEffect(() => {
     if (!hadFocus.current || !focusLost()) return;
     hadFocus.current = false;
     (card.current?.querySelector<HTMLElement>('button') ?? card.current)?.focus();

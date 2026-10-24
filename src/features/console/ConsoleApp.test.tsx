@@ -3,7 +3,7 @@ import { mockIPC } from '@tauri-apps/api/mocks';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { ConsoleEntry, ConsolePage, ConsoleRun } from '../../lib/contracts';
 import { THEME_STORAGE_KEY } from '../../lib/theme';
-import { ConsoleApp } from './ConsoleApp';
+import { ConsoleApp, POLL_MS } from './ConsoleApp';
 
 const at = '2026-10-17T12:00:00.000Z';
 const entries: ConsoleEntry[] = [
@@ -25,6 +25,7 @@ function firstPage(after: number, missed: number): ConsolePage {
 }
 
 afterEach(() => {
+  vi.useRealTimers();
   window.localStorage.removeItem(THEME_STORAGE_KEY);
   delete document.documentElement.dataset.theme;
 });
@@ -135,6 +136,8 @@ describe('ConsoleApp', () => {
   });
 
   it('says on the status line that a game runs and for how long', async () => {
+    // Each step is the next read: the test moves the clock instead of waiting for it.
+    vi.useFakeTimers();
     let run: ConsoleRun | undefined = { state: 'preflight' };
     let answers = true;
     mockIPC((cmd, args) => {
@@ -145,13 +148,21 @@ describe('ConsoleApp', () => {
     });
     const writeText = vi.fn(() => Promise.resolve());
     Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
+    /** Lets `ms` go by, with the answers that come meanwhile shown. */
+    const pass = async (ms: number) => {
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(ms);
+      });
+    };
     render(<ConsoleApp />);
-    const starting = await screen.findByText('Game starting');
+    await pass(0);
+    const starting = screen.getByText('Game starting');
     // Shown, not read out: it changes while the game runs.
     expect(starting.closest('[role],[aria-live]')).toBeNull();
     const shows = async (state: ConsoleRun['state'], runningMs: number, text: string) => {
       run = { state, runningMs };
-      expect(await screen.findByText(text)).toBeVisible();
+      await pass(POLL_MS);
+      expect(screen.getByText(text)).toBeVisible();
     };
     // Whole minutes: 42 minutes 59 seconds is still 42 minutes.
     await shows('running', 42 * 60_000 + 59_000, 'Game running for 42 minutes');
@@ -160,7 +171,8 @@ describe('ConsoleApp', () => {
     // A time that is not known or cannot be true is left out.
     await shows('running', 2 * 60_000, 'Game running for 2 minutes');
     run = { state: 'running' };
-    expect(await screen.findByText('Game running')).toBeVisible();
+    await pass(POLL_MS);
+    expect(screen.getByText('Game running')).toBeVisible();
     for (const junk of [-5, Number.NaN, Number.POSITIVE_INFINITY, 1e300]) {
       await shows('running', 2 * 60_000, 'Game running for 2 minutes');
       await shows('running', junk, 'Game running');
@@ -168,7 +180,8 @@ describe('ConsoleApp', () => {
 
     // It is not a journal line: Copy leaves it out and Clear keeps it.
     fireEvent.click(screen.getByRole('button', { name: 'Copy' }));
-    await screen.findByRole('button', { name: 'Copied' });
+    await pass(0);
+    expect(screen.getByRole('button', { name: 'Copied' })).toBeVisible();
     const copied = String((writeText.mock.calls as unknown as string[][])[0]?.[0]);
     expect(copied.split('\n')).toHaveLength(entries.length);
     expect(copied).not.toMatch(/Game (running|starting)/);
@@ -176,13 +189,13 @@ describe('ConsoleApp', () => {
     expect(screen.getByText('Game running')).toBeVisible();
 
     run = undefined;
-    await waitFor(() => {
-      expect(screen.queryByText(/^Game (running|starting)/)).toBeNull();
-    });
+    await pass(POLL_MS);
+    expect(screen.queryByText(/^Game (running|starting)/)).toBeNull();
     await shows('running', 60_000, 'Game running for 1 minute');
     // Without an answer the window cannot know that the game still runs.
     answers = false;
-    expect(await screen.findByRole('alert')).toHaveTextContent('does not answer');
+    await pass(POLL_MS);
+    expect(screen.getByRole('alert')).toHaveTextContent('does not answer');
     expect(screen.queryByText(/^Game (running|starting)/)).toBeNull();
   });
 
