@@ -1,4 +1,4 @@
-import { useId, type ReactNode } from 'react';
+import { useId, type ReactNode, type Ref } from 'react';
 import styles from './Switch.module.css';
 
 interface SwitchProps {
@@ -13,6 +13,8 @@ interface SwitchProps {
    * loses it in WebView2 and WebKit). */
   pending?: boolean;
   className?: string | undefined;
+  /** The checkbox itself, for handing the focus back to it. */
+  inputRef?: Ref<HTMLInputElement> | undefined;
   onChange: (on: boolean) => void;
 }
 
@@ -27,12 +29,14 @@ export function Switch({
   disabled = false,
   pending = false,
   className,
+  inputRef,
   onChange,
 }: SwitchProps) {
   const hintId = useId();
   const control = (
     <label className={[styles.switch, className].filter(Boolean).join(' ')}>
       <input
+        ref={inputRef}
         type="checkbox"
         role="switch"
         checked={checked}

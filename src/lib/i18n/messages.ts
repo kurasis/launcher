@@ -2302,6 +2302,10 @@ export type Messages = {
         sent: string | number;
         total: string | number;
       }) => string;
+      readonly updatesFound: (values: { count: number }) => string;
+      readonly packOffered: (values: { version: string | number }) => string;
+      readonly packHint: string;
+      readonly removeQuestion: (values: { name: string | number }) => string;
     };
     readonly catalog: {
       readonly requestsGroup: string;

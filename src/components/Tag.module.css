@@ -17,6 +17,11 @@
   color: var(--color-success-text);
 }
 
+.warning {
+  background: var(--color-warning-bg);
+  color: var(--color-warning-text);
+}
+
 .outline {
   border-color: var(--color-border-strong);
   color: var(--color-text-muted);
