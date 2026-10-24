@@ -3102,7 +3102,9 @@ skins-mod <channel>` there only checks the signature against the public key and
   and the answer shows in the launcher.
 - **A review** has a kind (`bug`, `idea`, `question`, `impression`), a category and
   subcategory from `services/reviews/categories.json` (one file for the service and the
-  launcher; an unknown subcategory is kept as `other`), a message of 20–5000 characters, an
+  launcher; an unknown subcategory is kept as `other`), an optional subject of one line and
+  at most 80 characters (it names the review under My reviews and in `list`), a message of
+  20–5000 characters, an
   optional rating 1–5 (impressions only), the launcher's version, OS and language, the
   install ID, and optionally the diagnostic ID of a launcher error or the number of a server
   ad complained about. Files: up to 5 pictures (PNG, JPEG or WebP by content; the launcher

@@ -192,7 +192,11 @@ fn run(command: &str, args: &[String]) -> Result<(), String> {
                 serde_json::to_string_pretty(&review).unwrap_or_default()
             );
             if let Some(language) = flag(args, "--translate") {
-                let translated = translate(&review.message, language)?;
+                let text = match &review.subject {
+                    Some(subject) => format!("{subject}\n\n{}", review.message),
+                    None => review.message.clone(),
+                };
+                let translated = translate(&text, language)?;
                 out!("\n--- {language} (DeepL) ---\n{translated}");
             }
         }

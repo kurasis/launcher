@@ -46,7 +46,8 @@ CREATE TABLE IF NOT EXISTS reviews (
     replied INTEGER,
     note TEXT,
     bytes INTEGER NOT NULL DEFAULT 0,
-    files_gone INTEGER NOT NULL DEFAULT 0
+    files_gone INTEGER NOT NULL DEFAULT 0,
+    subject TEXT
 );
 CREATE INDEX IF NOT EXISTS reviews_received ON reviews(received);
 CREATE INDEX IF NOT EXISTS reviews_install ON reviews(install_id);
@@ -134,6 +135,7 @@ pub struct Review {
     pub kind: String,
     pub category: String,
     pub subcategory: String,
+    pub subject: Option<String>,
     pub message: String,
     pub rating: Option<i64>,
     pub launcher_version: String,
@@ -166,6 +168,9 @@ pub struct Status {
     pub received: i64,
     /// `sent`, `read`, `answered`, `closed`, or `gone` (deleted or unknown).
     pub status: &'static str,
+    /// The player's own subject, so another computer of their account shows it.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub subject: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub reply: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -229,6 +234,19 @@ impl Store {
             .map_err(err)?;
         db.execute_batch("PRAGMA journal_mode=WAL;").map_err(err)?;
         db.execute_batch(SCHEMA).map_err(err)?;
+        // Columns added after the first release.
+        let has_subject: bool = db
+            .query_row(
+                "SELECT COUNT(*) FROM pragma_table_info('reviews') WHERE name = 'subject'",
+                [],
+                |r| r.get::<_, i64>(0),
+            )
+            .map_err(err)?
+            > 0;
+        if !has_subject {
+            db.execute_batch("ALTER TABLE reviews ADD COLUMN subject TEXT;")
+                .map_err(err)?;
+        }
         private(&path, 0o600);
         let files = data.join("files");
         std::fs::create_dir_all(&files).map_err(io)?;
@@ -397,8 +415,8 @@ impl Store {
         tx.execute(
             "INSERT INTO reviews (received, kind, category, subcategory, message, rating,
                 launcher_version, os, language, install_id, account, key_hash, net, message_hash,
-                diagnostic_id, ad, suspect, bytes)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18)",
+                diagnostic_id, ad, suspect, bytes, subject)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19)",
             params![
                 now,
                 review.kind,
@@ -418,6 +436,7 @@ impl Store {
                 review.ad,
                 suspect,
                 total,
+                review.subject,
             ],
         )
         .map_err(err)?;
@@ -454,7 +473,7 @@ impl Store {
             .prepare(
                 "SELECT id, received, kind, category, subcategory, message, rating,
                    launcher_version, os, language, install_id, diagnostic_id, ad, status,
-                   reply, replied
+                   reply, replied, subject
                  FROM reviews WHERE account = ?1 ORDER BY id LIMIT 10000",
             )
             .map_err(err)?;
@@ -469,6 +488,7 @@ impl Store {
                     "kind": r.get::<_, String>(2)?,
                     "category": r.get::<_, String>(3)?,
                     "subcategory": r.get::<_, String>(4)?,
+                    "subject": r.get::<_, Option<String>>(16)?,
                     "message": r.get::<_, String>(5)?,
                     "rating": r.get::<_, Option<i64>>(6)?,
                     "launcherVersion": r.get::<_, String>(7)?,
@@ -521,6 +541,7 @@ impl Store {
                 id: r.get(0)?,
                 received: r.get(1)?,
                 status: shown,
+                subject: r.get(5)?,
                 reply: if shown == "answered" || shown == "closed" {
                     r.get(3)?
                 } else {
@@ -537,7 +558,7 @@ impl Store {
         for (id, key) in keys {
             let found = db
                 .query_row(
-                    "SELECT id, received, status, reply, replied FROM reviews WHERE id = ?1 AND key_hash = ?2",
+                    "SELECT id, received, status, reply, replied, subject FROM reviews WHERE id = ?1 AND key_hash = ?2",
                     params![id, key_hash(key)],
                     row,
                 )
@@ -547,6 +568,7 @@ impl Store {
                 id: *id,
                 received: 0,
                 status: "gone",
+                subject: None,
                 reply: None,
                 replied: None,
             }));
@@ -554,7 +576,7 @@ impl Store {
         if let Some(account) = account {
             let mut statement = db
                 .prepare(
-                    "SELECT id, received, status, reply, replied FROM reviews
+                    "SELECT id, received, status, reply, replied, subject FROM reviews
                      WHERE account = ?1 ORDER BY id DESC LIMIT 100",
                 )
                 .map_err(err)?;
@@ -649,7 +671,8 @@ impl Store {
     pub fn list(&self, filter: &Filter<'_>) -> Result<Vec<Line>, String> {
         let mut sql = String::from(
             "SELECT id, received, kind, category, subcategory, status, suspect,
-                (SELECT COUNT(*) FROM files WHERE review = reviews.id), substr(message, 1, 60)
+                (SELECT COUNT(*) FROM files WHERE review = reviews.id),
+                COALESCE(subject, substr(message, 1, 60))
              FROM reviews WHERE 1 = 1",
         );
         let mut values: Vec<rusqlite::types::Value> = Vec::new();
@@ -701,7 +724,8 @@ impl Store {
             .query_row(
                 "SELECT id, received, kind, category, subcategory, message, rating,
                     launcher_version, os, language, install_id, account,
-                    diagnostic_id, ad, status, suspect, reply, replied, note, files_gone
+                    diagnostic_id, ad, status, suspect, reply, replied, note, files_gone,
+                    subject
                  FROM reviews WHERE id = ?1",
                 [id],
                 |r| {
@@ -711,6 +735,7 @@ impl Store {
                         kind: r.get(2)?,
                         category: r.get(3)?,
                         subcategory: r.get(4)?,
+                        subject: r.get(20)?,
                         message: r.get(5)?,
                         rating: r.get(6)?,
                         launcher_version: r.get(7)?,

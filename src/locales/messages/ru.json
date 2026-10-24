@@ -1046,6 +1046,10 @@
       "noInstallation": "Нет",
       "rating": "Ваша оценка",
       "stars": "{count, plural, one {# звезда} few {# звезды} many {# звёзд} other {# звезды}}",
+      "subject": "Тема (необязательно)",
+      "subjectHint": "Пара слов, чтобы потом найти отзыв среди своих.",
+      "subjectBugExample": "Например: Вылет с шейдерами",
+      "subjectExample": "Например: Сортировка модов по дате",
       "message": "Сообщение",
       "messageBugHint": "Что вы делали, что произошло и чего ожидали?",
       "messageHint": "Пишите на любом языке.",
@@ -3404,6 +3408,7 @@
     "{mod} needs {dependency} {version}, and the world has {actual}. Take another release of {mod} or remove it.": "Для {mod} нужен {dependency} {version}, а в мире {actual}. Возьмите другой выпуск {mod} или уберите его.",
     "{mod} needs {dependency}, which is not in the world. Add it to the installation or remove {mod}, then update the world's mods.": "Для {mod} нужен {dependency}, которого нет в мире. Добавьте его в установку или уберите {mod}, затем обновите моды мира.",
     "{mod} stopped the world server while it started. Take another release of {mod} or remove it.": "{mod} остановил сервер мира во время запуска. Возьмите другой выпуск {mod} или уберите его.",
-    "The list of other Minecraft versions was refused.": "Список других версий Minecraft отклонён."
+    "The list of other Minecraft versions was refused.": "Список других версий Minecraft отклонён.",
+    "The subject is too long: 80 characters at most.": "Тема слишком длинная: не больше 80 символов."
   }
 }

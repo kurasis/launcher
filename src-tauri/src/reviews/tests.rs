@@ -76,6 +76,7 @@ fn draft(files: Vec<DraftFile>) -> Draft {
         kind: "bug".into(),
         category: "launch".into(),
         subcategory: Some("crashes".into()),
+        subject: None,
         message: "The game closes when I open a world with Sodium.".into(),
         rating: Some(5),
         link_account: false,
@@ -155,9 +156,15 @@ async fn a_review_is_sent_scrubbed_and_remembered() {
         "{log}"
     );
 
+    assert!(
+        body.get("subject").is_none_or(Value::is_null),
+        "no subject given"
+    );
+
     let mine = reviews.mine(&state, &NoAccount, false).await.unwrap();
     assert_eq!(mine.reviews.len(), 1);
     assert_eq!(mine.reviews[0].id, 7);
+    assert_eq!(mine.reviews[0].subject, None);
     assert_eq!(read_sent(&state.data_root().unwrap()).reviews[0].key, KEY);
     assert_eq!(mine.waiting, 0);
     // The key never reaches the interface.
@@ -356,4 +363,34 @@ async fn the_accounts_reviews_are_exported_with_its_token() {
     // Signed out: nothing is asked.
     assert_eq!(reviews.export(&state, &SignedOut).await, None);
     assert_eq!(fake.calls.lock().unwrap().len(), 1);
+}
+
+#[tokio::test]
+async fn the_subject_is_one_short_line() {
+    let (_dir, state, reviews, fake) = setup(201);
+    let mut titled = draft(Vec::new());
+    titled.subject = Some("  Crash\nwith\u{202E}\t shaders \u{1b}[2J ".into());
+    reviews
+        .send(&state, &NoAccount, titled, None)
+        .await
+        .unwrap();
+    let body = fake.calls.lock().unwrap()[1].2.clone();
+    assert_eq!(body["subject"], "Crash with shaders [2J");
+    let mine = reviews.mine(&state, &NoAccount, false).await.unwrap();
+    assert_eq!(
+        mine.reviews[0].subject.as_deref(),
+        Some("Crash with shaders [2J")
+    );
+
+    let mut blank = draft(Vec::new());
+    blank.subject = Some(" \n ".into());
+    reviews.send(&state, &NoAccount, blank, None).await.unwrap();
+    assert!(fake.calls.lock().unwrap()[3].2["subject"].is_null());
+
+    let mut long = draft(Vec::new());
+    long.subject = Some("ж".repeat(81));
+    assert!(reviews.send(&state, &NoAccount, long, None).await.is_err());
+    let mut fits = draft(Vec::new());
+    fits.subject = Some("ж".repeat(80));
+    assert!(reviews.send(&state, &NoAccount, fits, None).await.is_ok());
 }

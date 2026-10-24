@@ -111,6 +111,7 @@ async fn a_review_is_stored_and_answered() {
         &app,
         "198.51.100.7",
         review(json!({
+            "subject": "  Crash\nwith\t shaders  ",
             "files": [
                 { "name": "C:\\Users\\steve\\AppData\\logs\\latest.log", "kind": "text", "text": "[12:00:01] [main/INFO]: Loading\n" },
                 { "name": "latest.log", "kind": "text", "text": "second\n" },
@@ -146,8 +147,10 @@ async fn a_review_is_stored_and_answered() {
             ))
             .unwrap()
     };
+    assert_eq!(stored.subject.as_deref(), Some("Crash with shaders"));
     let (_, answer) = call(&app, ask(&key)).await;
     assert_eq!(answer["reviews"][0]["status"], "sent");
+    assert_eq!(answer["reviews"][0]["subject"], "Crash with shaders");
     assert!(answer["reviews"][0].get("reply").is_none());
 
     app.store
@@ -160,6 +163,7 @@ async fn a_review_is_stored_and_answered() {
     // Another key learns nothing.
     let (_, answer) = call(&app, ask(&"a".repeat(64))).await;
     assert_eq!(answer["reviews"][0]["status"], "gone");
+    assert!(answer["reviews"][0].get("subject").is_none());
     assert!(answer["reviews"][0].get("reply").is_none());
 
     let delete = |key: &str| {
@@ -231,6 +235,8 @@ async fn junk_is_refused() {
     let cases = [
         json!({ "message": "short" }),
         json!({ "message": "x".repeat(5001) }),
+        json!({ "subject": "x".repeat(81) }),
+        json!({ "subject": 7 }),
         json!({ "kind": "rant" }),
         json!({ "rating": 5 }),
         json!({ "launcherVersion": "1.0; rm -rf /" }),
@@ -308,6 +314,17 @@ fn checks_keep_what_is_safe() {
     assert!(!model::looks_like_spam(
         "Лаунчер не видит Java 21 после обновления"
     ));
+    assert_eq!(model::subject(None), Ok(None));
+    assert_eq!(model::subject(Some(" \n\t ")), Ok(None));
+    assert_eq!(
+        model::subject(Some("Краш\u{202E} с шейдерами\u{1b}[2J")),
+        Ok(Some("Краш\u{FFFD} с шейдерами\u{FFFD}[2J".to_owned()))
+    );
+    assert_eq!(
+        model::subject(Some(&"ж".repeat(80))).map(|s| s.map(|s| s.chars().count())),
+        Ok(Some(80))
+    );
+    assert!(model::subject(Some(&"ж".repeat(81))).is_err());
     let incoming: Incoming =
         serde_json::from_value(review(json!({ "kind": "impression", "rating": 4 }))).unwrap();
     assert_eq!(incoming.check().unwrap().rating, Some(4));
@@ -665,4 +682,31 @@ async fn an_account_exports_its_reviews_and_the_answers() {
     app.sessions.end(&["s-ann".to_owned()]);
     let (status, _) = export(Some(token_for(&app, &key, ann, "s-ann"))).await;
     assert_eq!(status, StatusCode::UNAUTHORIZED);
+}
+
+#[test]
+fn a_database_from_before_subjects_gets_the_column() {
+    let dir = tempfile::tempdir().unwrap();
+    drop(Store::open(dir.path()).unwrap());
+    let db = rusqlite::Connection::open(dir.path().join("reviews.db")).unwrap();
+    db.execute_batch("ALTER TABLE reviews DROP COLUMN subject;")
+        .unwrap();
+    drop(db);
+    let store = Store::open(dir.path()).unwrap();
+    let incoming: Incoming =
+        serde_json::from_value(review(json!({ "subject": "Old database" }))).unwrap();
+    let sender = Sender::default();
+    let id = store
+        .add(
+            &incoming.check().unwrap(),
+            &sender,
+            &"k".repeat(64),
+            Vec::new(),
+            1,
+        )
+        .unwrap();
+    assert_eq!(
+        store.get(id).unwrap().unwrap().subject.as_deref(),
+        Some("Old database")
+    );
 }
