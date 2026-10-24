@@ -1354,6 +1354,10 @@ installation's runtime from its lock, and choosing a source writes `javaProvider
     restore" backup; restore as a copy; delete; refusal while the installation's game
     runs; whole-installation restore in place only; automatic backups after playing
     only when switched on and only for changed worlds, pruned to the kept count.
+  - Since 2026-10-24 (D-068 amendment): making, restoring and deleting backups beside
+    a hosted world, a deleted installation's backup too; delete refused beside the
+    game or another backup; junk and non-canonical ids (other spellings of a real id
+    included) refused before any permit, the real backup untouched.
   - `BackupsView.test.tsx`: backing up worlds and installations, restore and delete
     with confirmation, the switch for automatic backups.
 - **Release build, Linux x64 (Xvfb), Fabric 1.21.1:** with _Back up changed worlds

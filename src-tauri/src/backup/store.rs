@@ -369,7 +369,8 @@ impl Store {
     }
 
     pub fn load(&self, id: &str) -> LauncherResult<Snapshot> {
-        if Uuid::parse_str(id).is_err() {
+        // Only the form the store writes: no braces, `urn:` or other spellings in a path.
+        if !Uuid::parse_str(id).is_ok_and(|uuid| uuid.hyphenated().to_string() == id) {
             return Err(not_found());
         }
         read_manifest(&self.manifest_path(id)).ok_or_else(not_found)

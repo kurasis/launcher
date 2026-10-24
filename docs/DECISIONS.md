@@ -3039,6 +3039,12 @@ skins-mod <channel>` there only checks the signature against the public key and
   the owner accepted this.
 - **Server setup (owner):** DNS and certificate for worlds.lapi.sh and `deploy/bootstrap.sh`
   once (W5); a VPS, an unproxied DNS record for relay.lapi.sh and `RELAY_SSH_*` secrets (W6).
+- **Amended 2026-10-24:** deleting a backup is work of the backup's installation (which
+  may be deleted), so it runs beside a world server, like making and restoring one. A
+  server never reads the launcher's backup store; hosted worlds keep their own (W9).
+  Before, a delete was refused with "another operation" while a world was open to
+  friends and nothing showed why. Reset and moving the data folder stay refused beside
+  a server. Backup ids are taken only in the form the store writes them.
 
 ## D-069 — Ads for Minecraft servers at servers.lapi.sh
 
