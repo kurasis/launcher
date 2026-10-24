@@ -1,41 +1,36 @@
-.tabs {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-2);
-  margin-bottom: var(--space-4);
-  padding-bottom: var(--space-2);
-  border-bottom: 1px solid var(--color-border);
+/* Leave a review in concept A (D-072): the form, the player's latest reviews beside it
+   while there is room, under it below that. */
+.columns {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-6);
+  align-items: start;
+  min-inline-size: 0;
 }
 
-.tab {
-  padding: var(--space-1) var(--space-3);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-pill);
-  background: var(--color-surface);
-  color: var(--color-text);
-  cursor: pointer;
-  font: inherit;
+@container screen (min-width: 56rem) {
+  .columns {
+    grid-template-columns: minmax(0, 1fr) 22.5rem;
+  }
 }
 
-.tab[aria-selected='true'] {
-  border-color: var(--color-accent);
-  background: var(--color-accent-soft);
-  font-weight: 600;
+/* Alone, the form keeps the width it has beside the panel: no line runs too long. */
+.formColumn {
+  min-inline-size: 0;
+  max-inline-size: 52rem;
 }
 
-.tab:focus-visible {
-  outline: 2px solid var(--color-focus);
-  outline-offset: 2px;
-}
-
-.muted {
+.hint {
   margin: 0;
   color: var(--color-text-muted);
   font-size: var(--font-size-sm);
+  overflow-wrap: anywhere;
 }
 
 .label {
   margin: 0;
+  color: var(--color-text-2);
+  font-size: var(--font-size-sm);
   font-weight: 600;
 }
 
@@ -44,117 +39,206 @@
   gap: var(--space-3);
 }
 
-.kinds {
+.choiceRow {
   display: flex;
   flex-wrap: wrap;
   gap: var(--space-2) var(--space-4);
-  margin: 0;
-  padding: 0;
-  border: 0;
 }
 
-.kinds legend {
-  font-weight: 600;
-  margin-bottom: var(--space-2);
-}
-
-.kind,
-.check {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  cursor: pointer;
-}
-
-.field {
+.selects {
   display: grid;
-  gap: var(--space-1);
-  min-width: 0;
+  grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
+  gap: var(--space-3);
+}
+
+.selects select {
+  inline-size: 100%;
+}
+
+/* The installation on a row of its own, as wide as its longest name. */
+.wide select {
+  justify-self: start;
+  inline-size: auto;
+  max-inline-size: 100%;
 }
 
 .message {
-  font: inherit;
-  padding: var(--space-2) var(--space-3);
-  background: var(--color-surface);
-  color: var(--color-text);
-  border: 1px solid var(--color-border-strong);
-  border-radius: var(--radius-sm);
+  min-block-size: 6.875rem;
+  padding-block: var(--space-2);
+  line-height: 1.45;
   resize: vertical;
 }
 
-.message:focus-visible {
-  outline: 2px solid var(--color-focus);
-  outline-offset: 2px;
+.files {
+  display: grid;
+  gap: var(--space-2);
+  min-inline-size: 0;
 }
 
-.attachments {
+.drop {
   display: grid;
+  justify-items: center;
+  gap: var(--space-1);
+  padding: var(--space-4);
+  border: 1px dashed var(--color-border-strong);
+  border-radius: var(--radius-md);
+  text-align: center;
+  transition:
+    border-color var(--motion-duration) ease-out,
+    background var(--motion-duration) ease-out;
+}
+
+.drop[data-over='true'] {
+  border-color: var(--color-accent);
+  background: var(--color-accent-soft);
+}
+
+.drop[data-disabled='true'] {
+  opacity: 0.6;
+}
+
+.dropIcon {
+  color: var(--color-text-muted);
+}
+
+.drop[data-over='true'] .dropIcon {
+  color: var(--color-accent-text);
+}
+
+.dropTitle {
+  margin: 0;
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+}
+
+.dropActions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+}
+
+/* Links in a sentence: always underlined. */
+.link {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--color-accent-text);
+  font: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.link:disabled {
+  color: var(--color-text-muted);
+  cursor: not-allowed;
+}
+
+/* What is attached, as chips under the field. */
+.chips {
+  display: flex;
+  flex-wrap: wrap;
   gap: var(--space-2);
   margin: 0;
   padding: 0;
   list-style: none;
 }
 
-.attachment {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: var(--space-3);
-  min-width: 0;
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  min-block-size: 1.75rem;
+  max-inline-size: 100%;
+  padding-inline: 0.625rem 0.125rem;
+  /* Transparent here; the edge forced colors draw. */
+  border: 1px solid transparent;
+  border-radius: var(--radius-pill);
+  background: var(--color-neutral-bg);
+  color: var(--color-neutral-text);
+  font-size: var(--font-size-xs);
+  font-weight: 500;
 }
 
-.attachment > details {
-  flex: 1;
-  min-width: 0;
+.chipName {
+  min-inline-size: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-decoration: underline;
+  text-decoration-color: transparent;
+  overflow-wrap: anywhere;
+  cursor: pointer;
+}
+
+.chipName:hover,
+.chipName[aria-expanded='true'] {
+  text-decoration-color: currentcolor;
+}
+
+/* The ×: a small mark in a box large enough to hit. */
+.chipRemove {
+  display: inline-grid;
+  flex: none;
+  place-items: center;
+  inline-size: 1.5rem;
+  block-size: 1.5rem;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: none;
+  color: inherit;
+  cursor: pointer;
+}
+
+.chipRemove:hover:not(:disabled) {
+  background: var(--color-hover);
+}
+
+.chipRemove:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.preview {
+  min-inline-size: 0;
 }
 
 .thumb {
-  max-width: 12rem;
-  max-height: 8rem;
-  border-radius: var(--radius-sm);
+  display: block;
+  max-inline-size: min(100%, 20rem);
+  max-block-size: 12rem;
   border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
   object-fit: contain;
 }
 
 .text {
-  font-family: var(--font-mono);
-  font-size: var(--font-size-sm);
-  max-height: 14rem;
-  overflow: auto;
-  margin: var(--space-1) 0 0;
+  max-block-size: 14rem;
+  margin: 0;
   padding: var(--space-3);
-  background: rgb(0 0 0 / 25%);
+  overflow: auto;
   border: 1px solid var(--color-border);
   border-radius: var(--radius-sm);
+  background: var(--color-surface-sunken);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-xs);
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
 
-.logs {
-  display: grid;
-  gap: var(--space-2);
-  margin: 0;
-  padding: 0;
-  border: 0;
-}
-
-.log {
-  display: grid;
-  gap: var(--space-1);
-}
-
-.log .check {
-  font-family: var(--font-mono);
-  font-size: var(--font-size-sm);
-}
-
 .picker {
   display: grid;
-  gap: var(--space-2);
+  gap: var(--space-3);
   padding: var(--space-3);
-  border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
-  background: var(--color-surface);
+  background: var(--color-surface-sunken);
 }
 
 .shots {
@@ -168,7 +252,7 @@
 
 .shot {
   display: block;
-  width: 100%;
+  inline-size: 100%;
   padding: 0;
   border: 2px solid transparent;
   border-radius: var(--radius-sm);
@@ -176,48 +260,197 @@
   cursor: pointer;
 }
 
-.shot:hover,
-.shot:focus-visible {
+.shot:hover {
   border-color: var(--color-accent);
-  outline: none;
 }
 
 .shot img {
   display: block;
-  width: 100%;
+  inline-size: 100%;
   aspect-ratio: 16 / 9;
-  object-fit: cover;
   border-radius: var(--radius-sm);
+  object-fit: cover;
 }
 
-.mine {
+/* The logs under their box. */
+.logs {
   display: grid;
-  gap: var(--space-3);
+  gap: var(--space-2);
 }
 
-.list {
+.logList {
   display: grid;
-  gap: var(--space-3);
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.logList legend {
+  margin-block-end: var(--space-1);
+  padding: 0;
+}
+
+.log {
+  display: grid;
+  gap: var(--space-1);
+}
+
+.mono {
+  font-family: var(--font-mono);
+  font-size: var(--font-size-sm);
+}
+
+.show {
+  font-size: var(--font-size-sm);
+}
+
+.show summary {
+  color: var(--color-accent-text);
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.show[open] summary {
+  margin-block-end: var(--space-2);
+}
+
+/* Lined up with the title of the box above. */
+.indent {
+  padding-inline-start: calc(1rem + var(--space-2));
+}
+
+/* My reviews beside the form: the subject and its state, the number and the answer under
+   them, Open at the end across both. */
+.recent {
+  display: grid;
+  gap: 0.125rem;
+  margin: 0 calc(-1 * var(--space-3));
+  padding: 0;
+  list-style: none;
+}
+
+.recentItem {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.125rem var(--space-3);
+  align-items: center;
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-md);
+}
+
+.recentItem:hover {
+  background: var(--color-hover);
+}
+
+.recentName {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-2);
+  min-inline-size: 0;
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.recentMeta {
+  display: grid;
+  gap: 0.125rem;
+  grid-column: 1;
+  min-inline-size: 0;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+  overflow-wrap: anywhere;
+}
+
+.recentAnswer {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+}
+
+.recentOpen {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+}
+
+/* All the player's reviews: one under another, a line between them. */
+.items {
+  display: grid;
   margin: 0;
   padding: 0;
   list-style: none;
 }
 
+.items:focus {
+  outline: none;
+}
+
 .item {
   display: grid;
-  gap: var(--space-2);
-  padding: var(--space-3) var(--space-4);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  background: var(--color-surface);
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: var(--space-2) var(--space-3);
+  align-items: center;
+  padding-block: var(--space-3);
+}
+
+.item:first-child {
+  padding-block-start: 0;
+}
+
+.item:last-child {
+  padding-block-end: 0;
+}
+
+.item + .item {
+  border-block-start: 1px solid var(--color-border);
+}
+
+.item > * {
+  grid-column: 1 / -1;
 }
 
 .itemHead {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  justify-content: space-between;
-  gap: var(--space-2);
+  gap: var(--space-1) var(--space-2);
+  min-inline-size: 0;
+}
+
+.item > .itemHead {
+  grid-column: 1;
+}
+
+.itemTitle {
+  margin: 0;
+  font-size: var(--font-size-md);
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.itemTitle:focus:not(:focus-visible) {
+  outline: none;
+}
+
+.item > .itemActions {
+  display: flex;
+  grid-column: 2;
+  grid-row: 1;
+}
+
+.item > .itemActions[hidden] {
+  display: none;
+}
+
+.itemMeta {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+  font-variant-numeric: tabular-nums;
 }
 
 .excerpt {
@@ -226,14 +459,14 @@
   overflow-wrap: anywhere;
 }
 
+/* The answer on the sunken ground, no side bar. */
 .reply {
   display: grid;
   gap: var(--space-1);
-  margin: 0;
   padding: var(--space-2) var(--space-3);
-  border-inline-start: 3px solid var(--color-accent);
-  background: var(--color-accent-soft);
+  border: 1px solid transparent;
   border-radius: var(--radius-sm);
+  background: var(--color-surface-sunken);
 }
 
 .reply p {
@@ -242,86 +475,19 @@
   overflow-wrap: anywhere;
 }
 
-.drop {
-  display: grid;
-  justify-items: center;
-  gap: var(--space-1);
-  padding: var(--space-4);
-  border: 2px dashed var(--color-border-strong);
-  border-radius: var(--radius-md);
-  background: var(--color-surface);
-  text-align: center;
-  transition:
-    border-color 120ms ease,
-    background 120ms ease;
-}
-
-.drop[data-over='true'] {
-  border-color: var(--color-accent);
-  background: var(--color-accent-soft);
-}
-
-.drop[data-disabled='true'] {
-  opacity: 0.6;
-}
-
-.dropIcon {
-  width: 2rem;
-  height: 2rem;
-  fill: none;
-  stroke: var(--color-text-muted);
-  stroke-width: 1.8;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-}
-
-.drop[data-over='true'] .dropIcon {
-  stroke: var(--color-accent);
-}
-
-.dropTitle {
-  margin: 0;
+.reply .replyHead {
+  color: var(--color-text-2);
+  font-size: var(--font-size-sm);
   font-weight: 600;
 }
 
-.dropActions {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: center;
-  gap: var(--space-2);
-  margin: 0;
+.itemWide {
+  min-inline-size: 0;
 }
 
-.link {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-1);
-  padding: 0;
-  border: 0;
-  background: none;
-  color: var(--color-accent);
-  font: inherit;
-  text-decoration: underline;
-  cursor: pointer;
-}
-
-.link:disabled {
-  color: var(--color-text-muted);
-  cursor: default;
-}
-
-.link:focus-visible {
-  outline: 2px solid var(--color-focus);
-  outline-offset: 2px;
-}
-
-.link svg {
-  width: 1.1em;
-  height: 1.1em;
-  fill: none;
-  stroke: currentcolor;
-  stroke-width: 1.8;
-  stroke-linecap: round;
-  stroke-linejoin: round;
+@media (forced-colors: active) {
+  .chip,
+  .reply {
+    border-color: CanvasText;
+  }
 }

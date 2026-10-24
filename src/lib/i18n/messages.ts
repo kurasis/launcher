@@ -1129,7 +1129,6 @@ export type Messages = {
     readonly files: string;
     readonly filesHint: string;
     readonly picture: string;
-    readonly remove: string;
     readonly dropHere: string;
     readonly chooseFiles: string;
     readonly fromGallery: string;
@@ -1211,6 +1210,12 @@ export type Messages = {
       readonly settings: string;
       readonly performance: string;
     };
+    readonly removeFile: (values: { name: string | number }) => string;
+    readonly open: string;
+    readonly answerQuote: (values: { reply: string | number }) => string;
+    readonly allMine: string;
+    readonly fresh: string;
+    readonly retry: string;
   };
   readonly deleteInstance: {
     readonly delete: string;

@@ -3270,6 +3270,16 @@ skins-mod <channel>` there only checks the signature against the public key and
   place. The number of backups kept is checked (1 to 100) before anything is sent. While
   the screen's own backup runs its buttons keep the focus; a game or another operation
   disables them.
+- **Leave a review:** underline tabs (one shared `Tabs` component) "New review" and "My
+  reviews". Beside the form, while there is room, the five newest reviews with their
+  state, a "New" mark on an unread answer and Open, which shows that review under My
+  reviews. An answer shown beside the form is not marked read: only opening My reviews
+  does that, so the dot on More goes out where the answers are read. What is attached shows as chips under the drop
+  field, each opened on request and removed by its ×; a picture's own name stays on its
+  chip and never leaves. The form is kept while My reviews is open. Delete asks in
+  place and runs once; a list that cannot be read says so and offers Try again. A
+  review has no subject of its own yet, so the list beside the form names it by its
+  topic.
 - **Order:** tokens and shell, then Installations and the launch bar, the new
   installation form, the feed, the catalog, the mod page and the remaining screens, each
   in its own pull request. Features the new screens need from a service go to the thread
