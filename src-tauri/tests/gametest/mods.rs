@@ -822,6 +822,33 @@ pub fn blamed_by_stack<'a>(stack: &str, set: &'a [ModFile], mods: &Path) -> Opti
 /// Frames of a stack trace looked at for the mod to blame.
 const MAX_FRAMES: usize = 200;
 
+/// The mod the loader names when it refuses the set before the game starts: Forge's
+/// mod loading crash ("Mod File: supplementaries-1.16.5-0.18.5.jar" over a missing
+/// dependency) or FML's duplicate mods on 1.7.10 ("Found a duplicate mod gtnhmixins
+/// at [<jar>, <jar>]", the first jar goes). Both leave the game on an error screen.
+/// Nothing when the skins mod is named: then it is ours.
+pub fn blamed_by_loader<'a>(crash: &str, log: &str, set: &'a [ModFile]) -> Option<&'a ModFile> {
+    let failed = crash
+        .lines()
+        .filter_map(|line| line.trim().strip_prefix("Mod File: "))
+        .map(str::trim);
+    let duplicates = log.lines().filter_map(|line| {
+        let (_, rest) = line.split_once("Found a duplicate mod ")?;
+        let (_, jars) = rest.split_once(" at [")?;
+        let first = jars.split([',', ']']).next()?;
+        first.rsplit(['\\', '/']).next().map(str::trim)
+    });
+    for name in failed.chain(duplicates).take(MAX_FRAMES) {
+        if name.starts_with("launcherskins") {
+            return None;
+        }
+        if let Some(file) = set.iter().find(|f| f.file_name == name) {
+            return Some(file);
+        }
+    }
+    None
+}
+
 /// What a Quilt Loader jar provides to Fabric's mods: the ids in its
 /// `quilt.mod.json` `provides` (`fabricloader` at the version Quilt stands in
 /// for) and the mods it carries inside (`mixinextras`), each with its version.
@@ -1451,6 +1478,54 @@ fn the_stack_names_the_mod_whose_class_comes_first() {
         \tat com.jaquadro.chameleon.DefaultRegister.getItem(DefaultRegister.java:25)\n";
     assert!(blamed_by_stack(ours, &set, dir.path()).is_none());
     assert!(blamed_by_stack("no stack at all", &set, dir.path()).is_none());
+}
+
+#[test]
+fn the_loader_names_the_mod_it_refused() {
+    let file = |title: &str, name: &str| ModFile {
+        title: title.to_owned(),
+        version: "1".to_owned(),
+        file_name: name.to_owned(),
+        project: title.to_owned(),
+        version_id: title.to_owned(),
+        mod_ids: Vec::new(),
+        url: String::new(),
+        sha512: String::new(),
+        sha1: String::new(),
+        size: 0,
+    };
+    let set = [
+        file("Supplementaries", "supplementaries-1.16.5-0.18.5.jar"),
+        file("GTNHMixins", "gtnhmixins-2.1.2.jar"),
+        file("UniMixins", "+unimixins-all-1.7.10-0.3.1.jar"),
+    ];
+    let title = |f: Option<&ModFile>| f.map(|f| f.title.clone());
+    // Forge 1.13 to 1.16: a missing dependency.
+    let crash = "-- MOD supplementaries --\nDetails:\n\tMod File: supplementaries-1.16.5-0.18.5.jar\n\
+        \tFailure message: Mod supplementaries requires selene 1.16.5-1.0 or above\n";
+    assert_eq!(
+        title(blamed_by_loader(crash, "", &set)),
+        Some("Supplementaries".into())
+    );
+    // FML on 1.7.10: two jars with one mod id; the first goes.
+    let log = "[00:27:56] [Client thread/ERROR]: Found a duplicate mod gtnhmixins at \
+        [C:\\data\\game\\mods\\gtnhmixins-2.1.2.jar, C:\\data\\game\\mods\\+unimixins-all-1.7.10-0.3.1.jar]";
+    assert_eq!(
+        title(blamed_by_loader("", log, &set)),
+        Some("GTNHMixins".into())
+    );
+    // The skins mod named first: ours, nobody else is blamed.
+    let ours = "\tMod File: launcherskins-forge-1.16.5-0.8.0.jar\n\tMod File: supplementaries-1.16.5-0.18.5.jar\n";
+    assert!(blamed_by_loader(ours, "", &set).is_none());
+    // Junk: nothing.
+    assert!(
+        blamed_by_loader(
+            "Mod File: \nFound a duplicate mod x at [",
+            "Found a duplicate mod",
+            &set
+        )
+        .is_none()
+    );
 }
 
 #[test]
