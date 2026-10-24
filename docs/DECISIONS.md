@@ -1182,6 +1182,9 @@ message` plus a stack trace), with the event's level.
   **Diagnostics → Open console** through UI Automation and fails unless the console
   window shows the journal lines the core wrote at start; it uploads a screenshot of
   the window.
+- **Main window at start** (2026-10-24): `tauri.conf.json` no longer creates it; the
+  setup hook queues it through the same path once the settings are read, so it opens
+  with its first look (D-072).
 
 ## D-049 — Download manager and a queue for installs and repairs
 
@@ -3348,6 +3351,20 @@ skins-mod <channel>` there only checks the signature against the public key and
   installation form, the feed, the catalog, the mod page and the remaining screens, each
   in its own pull request. Features the new screens need from a service go to the thread
   that owns it.
+- **First frame** (owner, 2026-10-24): WebView2 takes about 0.4 s to start, and the
+  window stood white meanwhile. The window and WebView2 now take `--color-bg` of the
+  theme the page will show (the saved theme, or on Windows the system's app theme), and
+  `index.html` holds a silhouette of the shell (rail, title, chips, mosaic, launch bar)
+  in the tokens' colors. A script the core adds before the page's own marks the
+  document with `data-boot`, the saved theme and the direction, so the silhouette shows
+  only in the main window, in its theme and direction. While the core's state loads,
+  the interface keeps the same screen and bar beside its real rail, with no screen
+  marked current, instead of "Loading launcher state…" under Installations; the feed
+  then draws over it. A chosen light or dark theme is also the main window's own, from
+  its creation and on every change in Settings: its title bar, and the color scheme
+  WebView2 prefers, which otherwise showed Chromium's dark canvas for about 70 ms in
+  the light theme on a dark Windows. Tests keep the two grounds equal to the tokens
+  (`lifecycle/look.rs`) and the interface's copy equal to index.html's.
 - **Verification:** screenshots in light, dark, Arabic and at the 820 px minimum width for
   each pull request; a Windows package for window changes (CLAUDE.md).
 

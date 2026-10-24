@@ -7,6 +7,7 @@
 //! operations run on the main event loop and are serialized there.
 
 pub mod child;
+pub mod look;
 
 /// How long a child must survive before the main window is unloaded. A survival
 /// interval only gates the unload; it does not mean the game reached its menu.
@@ -180,9 +181,28 @@ impl LifecycleController {
             else {
                 return;
             };
-            if let Ok(builder) = WebviewWindowBuilder::from_config(&handle, &config)
-                && let Ok(window) = builder.build()
-            {
+            let Ok(builder) = WebviewWindowBuilder::from_config(&handle, &config) else {
+                return;
+            };
+            // The interface's ground and theme from the first frame (look.rs).
+            let look = match handle.try_state::<crate::state::AppState>() {
+                Some(state) => {
+                    let settings = state.settings();
+                    look::first_look(
+                        settings.theme,
+                        settings.language.as_str(),
+                        look::system_dark(),
+                    )
+                }
+                None => look::first_look(Default::default(), "en", look::system_dark()),
+            };
+            let mut builder = builder
+                .initialization_script(look.script)
+                .theme(look.window);
+            if let Some(ground) = look.ground {
+                builder = builder.background_color(ground);
+            }
+            if let Ok(window) = builder.build() {
                 controller.window_operations.fetch_add(1, Ordering::SeqCst);
                 let _ = window.set_focus();
             }

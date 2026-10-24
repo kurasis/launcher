@@ -63,3 +63,172 @@ html {
 ::selection {
   background: var(--color-accent-soft);
 }
+
+/* The start placeholder: the shell's shape in the theme's colors until the
+   interface draws. index.html holds all of it, shown only in the main window,
+   whose page the core marks with data-boot (src-tauri/src/lifecycle/look.rs);
+   while the core's state loads, the interface repeats its screen and bar
+   (src/app/StartPlaceholder.tsx), so the shape stays until the feed comes. */
+.boot {
+  display: none;
+}
+
+:root[data-boot] .boot {
+  display: grid;
+  grid-template-columns: var(--rail-width) minmax(0, 1fr);
+  min-height: 100vh;
+}
+
+.boot span,
+.boot-screen span,
+.boot-bar span {
+  display: block;
+  border-radius: var(--radius-sm);
+}
+
+.boot-rail {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  height: 100vh;
+  padding: var(--space-4) var(--space-3) var(--space-3);
+  background: var(--color-rail);
+}
+
+.boot-rail span {
+  height: 2.25rem;
+  background: var(--color-rail-field);
+}
+
+.boot-rail .boot-brand {
+  width: 70%;
+  height: 2rem;
+  margin-block-end: var(--space-1);
+}
+
+.boot-column {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 100vh;
+}
+
+/* As the shell's content area and the feed's screen lay out. */
+.boot-content {
+  flex: 1;
+  width: 100%;
+  max-width: 76rem;
+  margin: 0 auto;
+  padding: var(--space-6) var(--space-8);
+}
+
+.boot-screen {
+  display: grid;
+  gap: var(--space-4);
+}
+
+.boot-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+}
+
+.boot-head > span {
+  width: 8rem;
+  height: 1.75rem;
+  background: var(--color-border-soft);
+}
+
+.boot-head > div {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.boot-head > div > span {
+  width: 9.5rem;
+  height: 2.25rem;
+  border-radius: var(--radius-md);
+  background: var(--color-border-soft);
+}
+
+.boot-head > div > span:last-child {
+  width: 6.75rem;
+}
+
+.boot-panels {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-3);
+}
+
+.boot-panels span,
+.boot-mosaic span {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+}
+
+.boot-panels span {
+  height: 7.5rem;
+}
+
+.boot-chips {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.boot-chips span {
+  width: 5rem;
+  height: 1.75rem;
+  border-radius: var(--radius-pill);
+  background: var(--color-border-soft);
+}
+
+.boot-chips span:first-child {
+  width: 3rem;
+}
+
+.boot-mosaic {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-4);
+  align-items: start;
+}
+
+.boot-mosaic > div {
+  display: grid;
+  gap: var(--space-4);
+}
+
+.boot-mosaic span {
+  height: 12rem;
+}
+
+/* Cards of different heights, as in the feed's mosaic. */
+.boot-mosaic > div:first-child > span:first-child {
+  height: 20rem;
+}
+
+.boot-mosaic > div:nth-child(3) > span:last-child {
+  height: 15rem;
+}
+
+.boot-bar {
+  position: sticky;
+  inset-block-end: 0;
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  min-height: var(--bar-height);
+  padding: var(--space-3) var(--space-6);
+  background: var(--color-bar);
+  border-block-start: 1px solid var(--color-border);
+}
+
+.boot-bar span {
+  width: 9rem;
+  height: 3rem;
+  border-radius: var(--radius-md);
+  background: var(--color-border-soft);
+}

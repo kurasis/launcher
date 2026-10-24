@@ -441,13 +441,19 @@ pub async fn pick_java_file<R: Runtime>(
 }
 
 #[tauri::command(async)]
-pub fn set_app_settings(
+pub fn set_app_settings<R: Runtime>(
+    app: AppHandle<R>,
     state: State<'_, AppState>,
     stats: State<'_, Arc<crate::stats::Stats>>,
     request: MutationRequest<SettingsPatch>,
 ) -> LauncherResult<SettingsView> {
     let off = request.payload.stats == Some(false);
+    let themed = request.payload.theme.is_some();
     let view = state.set_app_settings(request)?;
+    // The main window's title bar and WebView2's color scheme follow the theme.
+    if themed && let Some(window) = app.get_webview_window(crate::lifecycle::MAIN_WINDOW) {
+        let _ = window.set_theme(crate::lifecycle::look::window_theme(view.theme));
+    }
     // Turning the statistics off erases what waits to go (D-071).
     if off && !view.stats {
         stats.forget(&state);

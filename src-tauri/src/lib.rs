@@ -402,6 +402,9 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
         });
     }
     app.manage(state);
+    // The main window opens once the settings give its first look (lifecycle::look).
+    app.state::<LifecycleController>()
+        .show_main_window(app.handle());
     // Downloads fall back to the mirror (D-062); its hosts show in the interface.
     {
         let routing = mirror::shared();

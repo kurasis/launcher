@@ -64,6 +64,11 @@ tauri-plugin-notification = "2.7.0"
 sys-locale = "0.3.2"
 iana-time-zone = "0.1.65"
 
+[target.'cfg(windows)'.dependencies]
+# Whether Windows shows apps dark, for the main window's first look
+# (lifecycle::look); already used by reqwest for the system proxy.
+windows-registry = "0.6.1"
+
 [target.'cfg(unix)'.dependencies]
 # statvfs for free-space checks on the data directory's own filesystem; the clock
 # tick rate for boot-relative process start times (launch::orphan).

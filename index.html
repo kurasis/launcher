@@ -7,7 +7,50 @@
     <title>Launcher</title>
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <!-- The shell's shape until the interface draws over it. Only the main window
+           shows it: the core marks that window's page with data-boot, its theme and
+           direction before any script here runs (src-tauri/src/lifecycle/look.rs).
+           While the core's state loads, the interface repeats its screen and bar
+           (src/app/StartPlaceholder.tsx, a test keeps the two alike). -->
+      <div class="boot" aria-hidden="true">
+        <div class="boot-rail">
+          <span class="boot-brand"></span>
+          <span></span>
+          <span></span>
+          <span></span>
+          <span></span>
+          <span></span>
+          <span></span>
+          <span></span>
+          <span></span>
+        </div>
+        <div class="boot-column">
+          <div class="boot-content">
+            <div class="boot-screen">
+              <div class="boot-head">
+                <span></span>
+                <div><span></span><span></span></div>
+              </div>
+              <div class="boot-panels"><span></span><span></span></div>
+              <div class="boot-chips">
+                <span></span>
+                <span></span>
+                <span></span>
+                <span></span>
+                <span></span>
+              </div>
+              <div class="boot-mosaic">
+                <div><span></span><span></span></div>
+                <div><span></span><span></span></div>
+                <div><span></span><span></span></div>
+              </div>
+            </div>
+          </div>
+          <div class="boot-bar"><span></span></div>
+        </div>
+      </div>
+    </div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
