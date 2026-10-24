@@ -1,0 +1,16 @@
+/* What a press did, read out when it changes: an empty line takes no room, and stays
+   in place for the next words. */
+.status {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+  overflow-wrap: anywhere;
+}
+
+.status:empty {
+  position: absolute;
+  inline-size: 1px;
+  block-size: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+}

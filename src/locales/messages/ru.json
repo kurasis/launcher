@@ -1533,8 +1533,7 @@
       "exported": "Сохранено: {name}. Проверьте файл перед отправкой.",
       "exportCancelled": "Экспорт отменён.",
       "running": "Выполняется",
-      "now": "сейчас",
-      "dayTime": "{day}, {time}"
+      "now": "сейчас"
     },
     "about": {
       "title": "О программе",
@@ -1687,7 +1686,10 @@
       "delete": "Удалить",
       "confirmDelete": "Удалить этот скриншот? Вернуть его будет нельзя.",
       "deleted": "Скриншот удалён.",
-      "cancel": "Отмена"
+      "cancel": "Отмена",
+      "group": "{name}, {game}",
+      "caption": "{date}, {size}",
+      "loading": "Ищем скриншоты…"
     },
     "mods": {
       "title": "Моды",
@@ -2516,8 +2518,7 @@
         "created": "Копия сделана.",
         "confirmRestore": "Вернуть копию от {date} вместо мира {world}? Сначала делается копия его текущего состояния.",
         "restored": "Копия от {date} восстановлена.",
-        "row": "{reason}, {size}",
-        "dayTime": "{day}, {time}"
+        "row": "{reason}, {size}"
       },
       "update": {
         "title": "Моды мира",
@@ -2877,6 +2878,9 @@
       "pickCape": "Выберите плащ (PNG, GIF или APNG)",
       "player": "Видео",
       "saveSkinPicture": "Сохранить картинку персонажа"
+    },
+    "dates": {
+      "dayTime": "{day}, {time}"
     }
   },
   "errors": {

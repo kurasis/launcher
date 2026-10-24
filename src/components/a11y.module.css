@@ -1,0 +1,10 @@
+/* Read by assistive technology, not shown: a count's words beside the bare number. */
+.visuallyHidden {
+  position: absolute;
+  inline-size: 1px;
+  block-size: 1px;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}

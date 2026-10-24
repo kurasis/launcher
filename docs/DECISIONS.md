@@ -3256,6 +3256,12 @@ skins-mod <channel>` there only checks the signature against the public key and
   source tags read "Launcher" and "Game" on screen and stay in capitals only in copied
   text; the time keeps its milliseconds; the status line says how many lines the console
   keeps. The game's run time on that line waits for `read_console` to carry the run.
+- **Screenshots:** a toolbar (hint, installation, Refresh, the count and size of what is
+  shown), then one group per installation headed by its name and version, the shots in a
+  grid with a short date and the size under each. The viewer is the shared dialog: the
+  focus stays in it and goes back to the thumbnail of the shot shown last; a delete is
+  asked in place. Short dates ("Today, 19:40", "3 October") come from one helper for
+  every screen.
 - **Order:** tokens and shell, then Installations and the launch bar, the new
   installation form, the feed, the catalog, the mod page and the remaining screens, each
   in its own pull request. Features the new screens need from a service go to the thread

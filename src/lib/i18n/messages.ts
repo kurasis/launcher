@@ -1627,7 +1627,6 @@ export type Messages = {
     readonly exportCancelled: string;
     readonly running: string;
     readonly now: string;
-    readonly dayTime: (values: { day: string | number; time: string | number }) => string;
   };
   readonly about: {
     readonly title: string;
@@ -1785,6 +1784,9 @@ export type Messages = {
     readonly confirmDelete: string;
     readonly deleted: string;
     readonly cancel: string;
+    readonly group: (values: { name: string | number; game: string | number }) => string;
+    readonly caption: (values: { date: string | number; size: string | number }) => string;
+    readonly loading: string;
   };
   readonly mods: {
     readonly title: string;
@@ -2685,7 +2687,6 @@ export type Messages = {
       }) => string;
       readonly restored: (values: { date: string | number }) => string;
       readonly row: (values: { reason: string | number; size: string | number }) => string;
-      readonly dayTime: (values: { day: string | number; time: string | number }) => string;
     };
     readonly update: {
       readonly title: string;
@@ -3064,5 +3065,8 @@ export type Messages = {
     readonly pickCape: string;
     readonly player: string;
     readonly saveSkinPicture: string;
+  };
+  readonly dates: {
+    readonly dayTime: (values: { day: string | number; time: string | number }) => string;
   };
 };

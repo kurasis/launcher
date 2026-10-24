@@ -8,7 +8,7 @@ import type { BackupInfo, LocalWorld, WorldsState } from '../../lib/contracts';
 import { formatBytes } from '../../lib/format';
 import { ipc } from '../../lib/ipc';
 import { numberLocale, strings } from '../../lib/strings';
-import { calendarDays, daysAgo } from '../../lib/time';
+import { shortWhen } from '../../lib/time';
 import { worldsErrorText } from './useWorlds';
 import styles from './Worlds.module.css';
 
@@ -25,26 +25,8 @@ const when = (backup: BackupInfo) => new Date(backup.createdAt).toLocaleString(n
 
 /** "Today, 19:55", "Yesterday, 23:10", "3 October, 18:02": the time kept on older days,
  * as one day can have several backups. */
-function shortWhen(backup: BackupInfo, now = Date.now()): string {
-  const at = Date.parse(backup.createdAt);
-  if (Number.isNaN(at)) return '';
-  const date = new Date(at);
-  const time = { hour: 'numeric', minute: '2-digit' } as const;
-  if (calendarDays(at, now) <= 1) {
-    // "today" starts the line: "Today, 19:55".
-    const day = daysAgo(at, now);
-    return strings.worlds.safety.dayTime({
-      day: day.charAt(0).toLocaleUpperCase(numberLocale()) + day.slice(1),
-      time: new Intl.DateTimeFormat(numberLocale(), time).format(date),
-    });
-  }
-  return new Intl.DateTimeFormat(numberLocale(), {
-    ...(date.getFullYear() === new Date(now).getFullYear() ? {} : { year: 'numeric' as const }),
-    month: 'long',
-    day: 'numeric',
-    ...time,
-  }).format(date);
-}
+const backupWhen = (backup: BackupInfo) =>
+  shortWhen(backup.createdAt, { time: 'always', capital: true });
 
 /**
  * A hosted world's backups on this computer (W9): one after each session
@@ -150,7 +132,7 @@ export function WorldBackups({ world, state }: Props) {
         <ul ref={list} className={styles.backupList} aria-label={t.list} tabIndex={-1}>
           {backups.map((backup) => (
             <li key={backup.id} className={styles.backupRow}>
-              <span className={styles.backupWhen}>{shortWhen(backup)}</span>
+              <span className={styles.backupWhen}>{backupWhen(backup)}</span>
               <span className={styles.rowMeta}>
                 {t.row({ reason: b.reason[backup.reason], size: formatBytes(backup.totalBytes) })}
               </span>

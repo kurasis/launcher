@@ -7,7 +7,7 @@ import type {
   ModsSetProblem,
   ModsVersion,
 } from '../../lib/contracts';
-import { numberLocale, strings } from '../../lib/strings';
+import { isolate, numberLocale, strings } from '../../lib/strings';
 
 /** Where pictures of the catalog come from; nothing else is drawn (D-066). */
 export const PICTURE_ORIGIN = 'https://files-mods.lapi.sh/';
@@ -164,8 +164,8 @@ export function stateTone(state: ModsImportRequest['state']): StatusTone {
         : 'neutral';
 }
 
-/** A name or version kept whole inside a sentence of either direction. */
-export const isolate = (text: string) => `\u2068${text}\u2069`;
+// Shared with every screen now; kept here for the mods screens' imports.
+export { isolate };
 
 /** A problem the mods' jars report, in words (D-066). */
 export function describeProblem(problem: ModsSetProblem): string {

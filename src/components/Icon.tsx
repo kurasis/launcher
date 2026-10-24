@@ -643,14 +643,16 @@ interface IconProps {
   name: IconName;
   /** Pixels; the icon is square. */
   size?: number;
+  /** An arrow that points along the text: turned round in a right-to-left language. */
+  mirror?: boolean;
   className?: string | undefined;
 }
 
 /** A decorative icon: always hidden from assistive technology, the text next to it names the action. */
-export function Icon({ name, size = 20, className }: IconProps) {
+export function Icon({ name, size = 20, mirror = false, className }: IconProps) {
   return (
     <svg
-      className={[styles.icon, className].filter(Boolean).join(' ')}
+      className={[styles.icon, mirror && styles.mirror, className].filter(Boolean).join(' ')}
       viewBox="0 0 24 24"
       width={size}
       height={size}

@@ -13,7 +13,7 @@ import type {
 import { describeIpcError, ipc } from '../../lib/ipc';
 import { numberLocale, strings } from '../../lib/strings';
 import { cannotAdd, installKind, isolate, loaderOf } from './helpers';
-import { InstallationSelect } from './InstallationSelect';
+import { InstallationSelect } from '../instances/InstallationSelect';
 import { type Offer, ProjectCard } from './ProjectCard';
 import { ProjectDescription } from './ProjectDescription';
 import { ProjectDependencies, ProjectSimilar } from './ProjectRelated';
@@ -224,6 +224,8 @@ export function ProjectPage({
       <span className={catalog.spacer} />
       <InstallationSelect
         id={selectId}
+        label={strings.mods.installation}
+        none={strings.mods.noInstallation}
         instances={instances}
         value={instance?.id ?? null}
         onChange={onInstance}
