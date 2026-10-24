@@ -7,7 +7,7 @@ import { numberLocale, strings } from '../../lib/strings';
 import { AddDialog, type AddTarget } from './AddDialog';
 import { AddToCatalog, RequestsSection } from './AddToCatalog';
 import { ContentSection } from './ContentSection';
-import { InstallationSelect } from './InstallationSelect';
+import { InstallationSelect } from '../instances/InstallationSelect';
 import { LinkConfirm } from './LinkConfirm';
 import { PackDialog } from './PackDialog';
 import { ProjectPage, type QuickTarget } from './ProjectPage';
@@ -232,6 +232,8 @@ export function ModsView({
               </h2>
               <InstallationSelect
                 id={selectId}
+                label={t.installation}
+                none={t.noInstallation}
                 instances={snapshot.instances}
                 value={instance?.id ?? null}
                 onChange={onInstance}

@@ -19,6 +19,8 @@ interface DialogProps {
   children: ReactNode;
   /** Narrow dialogs ask one thing; wide ones list. */
   wide?: boolean;
+  /** A picture at full size: as wide as the window allows. */
+  full?: boolean;
   /** The id of the text that says what the dialog asks. */
   describedBy?: string | undefined;
   /**
@@ -29,6 +31,9 @@ interface DialogProps {
   initialFocus?: RefObject<HTMLElement | null> | 'dialog' | undefined;
   /** Escape closes it. False while something runs that must not be left. */
   closable?: boolean;
+  /** What takes the focus back when it closes, while it is there: by default what opened
+   * it (a viewer gives it to the picture it showed last). */
+  returnFocus?: RefObject<HTMLElement | null> | undefined;
 }
 
 /** What takes the focus in a dialog: not a control disabled itself or by its fieldset. */
@@ -60,9 +65,11 @@ export function Dialog({
   onClose,
   children,
   wide = false,
+  full = false,
   describedBy,
   initialFocus,
   closable = true,
+  returnFocus,
 }: DialogProps) {
   const titleId = useId();
   const ref = useRef<HTMLDivElement>(null);
@@ -76,10 +83,12 @@ export function Dialog({
   const onCloseRef = useRef(onClose);
   const closableRef = useRef(closable);
   const initialRef = useRef(initialFocus);
+  const returnRef = useRef(returnFocus);
   useLayoutEffect(() => {
     onCloseRef.current = onClose;
     closableRef.current = closable;
     initialRef.current = initialFocus;
+    returnRef.current = returnFocus;
   });
   // Where the focus goes in, on opening and each time it is outside: what was asked
   // for while it is there, else the first control, else the dialog until one shows up.
@@ -118,6 +127,10 @@ export function Dialog({
       // has put it somewhere. When that is gone, the dialog under it or the page takes it.
       const lost = () =>
         document.activeElement === null || document.activeElement === document.body;
+      if (!lost()) return;
+      // What was asked for is brought into view: it may not be what opened the dialog.
+      const back = returnRef.current?.current;
+      if (back instanceof HTMLElement && back.isConnected) back.focus();
       if (!lost()) return;
       if (opener instanceof HTMLElement && opener !== document.body && opener.isConnected) {
         opener.focus({ preventScroll: true });
@@ -175,7 +188,9 @@ export function Dialog({
         aria-labelledby={titleId}
         aria-describedby={describedBy}
         tabIndex={-1}
-        className={[styles.dialog, wide && styles.wide].filter(Boolean).join(' ')}
+        className={[styles.dialog, wide && styles.wide, full && styles.full]
+          .filter(Boolean)
+          .join(' ')}
         onKeyDown={onKeyDown}
       >
         <h2 id={titleId} className={styles.title}>

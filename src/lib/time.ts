@@ -1,4 +1,4 @@
-import { numberLocale } from './strings';
+import { numberLocale, strings } from './strings';
 
 const DAY_MS = 86_400_000;
 
@@ -17,4 +17,34 @@ export function daysAgo(at: number, now = Date.now()): string {
     -calendarDays(at, now),
     'day',
   );
+}
+
+/**
+ * A date said briefly: "today, 19:55" or "yesterday, 19:55" for the last two days, "3 October"
+ * before, with the year when it is not this one; '' when it does not parse. `time: 'always'`
+ * keeps the time on older days too (one day can hold several backups); `capital` is for a date
+ * that starts its line ("Today, 19:55").
+ */
+export function shortWhen(
+  at: string,
+  { time = 'recent', capital = false }: { time?: 'recent' | 'always'; capital?: boolean } = {},
+  now = Date.now(),
+): string {
+  const moment = Date.parse(at);
+  if (Number.isNaN(moment)) return '';
+  const date = new Date(moment);
+  const clock = { hour: 'numeric', minute: '2-digit' } as const;
+  if (calendarDays(moment, now) <= 1) {
+    const day = daysAgo(moment, now);
+    return strings.dates.dayTime({
+      day: capital ? day.charAt(0).toLocaleUpperCase(numberLocale()) + day.slice(1) : day,
+      time: new Intl.DateTimeFormat(numberLocale(), clock).format(date),
+    });
+  }
+  return new Intl.DateTimeFormat(numberLocale(), {
+    ...(date.getFullYear() === new Date(now).getFullYear() ? {} : { year: 'numeric' as const }),
+    month: 'long',
+    day: 'numeric',
+    ...(time === 'always' ? clock : {}),
+  }).format(date);
 }

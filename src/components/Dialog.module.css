@@ -34,6 +34,10 @@
   width: min(100%, 48rem);
 }
 
+.full {
+  width: min(100%, 72rem);
+}
+
 .title {
   margin: 0;
   font-size: var(--font-size-lg);

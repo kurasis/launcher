@@ -9,8 +9,8 @@ import { StateDot, type DotTone } from '../../components/StateDot';
 import type { AppSnapshot, OperationKind, Outcome } from '../../lib/contracts';
 import { formatBytes } from '../../lib/format';
 import { ipc } from '../../lib/ipc';
-import { localizeError, numberLocale, strings } from '../../lib/strings';
-import { calendarDays, daysAgo } from '../../lib/time';
+import { localizeError, strings } from '../../lib/strings';
+import { shortWhen } from '../../lib/time';
 import { useCommand } from '../../lib/useCommand';
 import { useShownError } from '../../lib/useShownError';
 import styles from './Diagnostics.module.css';
@@ -35,25 +35,6 @@ const ROW_KINDS: ReadonlySet<OperationKind> = new Set([
   'backup',
   'restore',
 ]);
-
-/** "yesterday, 19:12" for today and yesterday, "3 October" before, with the year when not this one. */
-function finishedWhen(finishedAt: string, now = Date.now()): string {
-  const at = Date.parse(finishedAt);
-  if (Number.isNaN(at)) return '';
-  const date = new Date(at);
-  if (calendarDays(at, now) <= 1) {
-    const time = new Intl.DateTimeFormat(numberLocale(), {
-      hour: 'numeric',
-      minute: '2-digit',
-    }).format(date);
-    return t.dayTime({ day: daysAgo(at, now), time });
-  }
-  return new Intl.DateTimeFormat(numberLocale(), {
-    ...(date.getFullYear() === new Date(now).getFullYear() ? {} : { year: 'numeric' as const }),
-    month: 'long',
-    day: 'numeric',
-  }).format(date);
-}
 
 /** Recent results, the last run's output and a user-requested redacted export. */
 export function DiagnosticsView({ snapshot }: { snapshot: AppSnapshot }) {
@@ -170,7 +151,7 @@ export function DiagnosticsView({ snapshot }: { snapshot: AppSnapshot }) {
                         <td className={styles.size}>
                           {op.networkBytes > 0 ? formatBytes(op.networkBytes) : ''}
                         </td>
-                        <td className={styles.when}>{finishedWhen(op.finishedAt)}</td>
+                        <td className={styles.when}>{shortWhen(op.finishedAt)}</td>
                       </tr>
                     ))}
                   </tbody>

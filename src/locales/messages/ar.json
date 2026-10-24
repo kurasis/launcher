@@ -1534,8 +1534,7 @@
       "exported": "حُفظ {name}. راجعه قبل مشاركته.",
       "exportCancelled": "أُلغي التصدير.",
       "running": "قيد التنفيذ",
-      "now": "الآن",
-      "dayTime": "{day}، {time}"
+      "now": "الآن"
     },
     "about": {
       "title": "حول",
@@ -1688,7 +1687,10 @@
       "delete": "حذف",
       "confirmDelete": "هل تريد حذف لقطة الشاشة هذه؟ لا يمكن استعادتها.",
       "deleted": "حُذفت لقطة الشاشة.",
-      "cancel": "إلغاء"
+      "cancel": "إلغاء",
+      "group": "{name}، {game}",
+      "caption": "{date}، {size}",
+      "loading": "جارٍ البحث عن لقطات الشاشة…"
     },
     "mods": {
       "title": "التعديلات",
@@ -2517,8 +2519,7 @@
         "created": "تم النسخ الاحتياطي.",
         "confirmRestore": "هل تضع النسخة الاحتياطية من {date} مكان {world}؟ يُنسخ العالم بحالته الحالية أولًا.",
         "restored": "أُعيدت النسخة الاحتياطية من {date}.",
-        "row": "{reason}، {size}",
-        "dayTime": "{day}، {time}"
+        "row": "{reason}، {size}"
       },
       "update": {
         "title": "تعديلات العالم",
@@ -2878,6 +2879,9 @@
       "pickCape": "اختر عباءة (PNG أو GIF أو APNG)",
       "player": "فيديو",
       "saveSkinPicture": "حفظ صورة الشخصية"
+    },
+    "dates": {
+      "dayTime": "{day}، {time}"
     }
   },
   "errors": {

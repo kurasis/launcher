@@ -1533,8 +1533,7 @@
       "exported": "Saved {name}. Review it before sharing.",
       "exportCancelled": "Export cancelled.",
       "running": "In progress",
-      "now": "now",
-      "dayTime": "{day}, {time}"
+      "now": "now"
     },
     "about": {
       "title": "About",
@@ -1687,7 +1686,10 @@
       "delete": "Delete",
       "confirmDelete": "Delete this screenshot? It cannot be brought back.",
       "deleted": "Screenshot deleted.",
-      "cancel": "Cancel"
+      "cancel": "Cancel",
+      "group": "{name}, {game}",
+      "caption": "{date}, {size}",
+      "loading": "Looking for screenshots…"
     },
     "mods": {
       "title": "Mods",
@@ -2516,8 +2518,7 @@
         "created": "Backed up.",
         "confirmRestore": "Put the backup from {date} in place of {world}? The world as it is now is backed up first.",
         "restored": "The backup from {date} is back in place.",
-        "row": "{reason}, {size}",
-        "dayTime": "{day}, {time}"
+        "row": "{reason}, {size}"
       },
       "update": {
         "title": "The world's mods",
@@ -2877,6 +2878,9 @@
       "pickCape": "Choose a cape (PNG, GIF or APNG)",
       "player": "Video",
       "saveSkinPicture": "Save a picture of the character"
+    },
+    "dates": {
+      "dayTime": "{day}, {time}"
     }
   },
   "errors": {

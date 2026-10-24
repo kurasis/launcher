@@ -102,6 +102,9 @@ export function numberLocale(): string {
   return localeOf(tag, catalog);
 }
 
+/** A name, version, size or date kept whole inside a sentence of either direction. */
+export const isolate = (text: string) => `\u2068${text}\u2069`;
+
 /** Mirrors the setting for the first paint and for the console window. */
 export const LANGUAGE_STORAGE_KEY = 'launcher.language';
 
