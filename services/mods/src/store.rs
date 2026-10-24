@@ -859,7 +859,7 @@ pub struct FileRow {
 /// The catalog's file with this SHA-1 or SHA-256, a shown project's first.
 const CATALOG_FILE: &str =
     "SELECT f.sha1, f.sha256, f.version_id, v.project_id, f.file_name, v.number,
-       p.status IN ('importing', 'ready'), p.title, p.icon_thumb
+       p.status IN ('importing', 'ready'), p.title, p.icon_thumb, v.source
      FROM version_file f
      JOIN version v ON v.id = f.version_id
      JOIN project p ON p.id = v.project_id
@@ -887,6 +887,8 @@ fn catalog_file(
             "iconThumb": thumb
                 .filter(|_| shown)
                 .map(|t| files.image(&t, "image/webp")),
+            // Where the version came from: `modrinth`, `curseforge`, `own`...
+            "source": r.get::<_, String>(9)?,
         }))
     })
     .optional()
@@ -4380,7 +4382,7 @@ impl Store {
     ) -> Result<Option<serde_json::Value>> {
         let base = db
             .query_row(
-                "SELECT id, project_id, number, name, changelog, channel, published, downloads, files_state, gone_at
+                "SELECT id, project_id, number, name, changelog, channel, published, downloads, files_state, gone_at, source
                  FROM version WHERE id = ?1",
                 [id],
                 |r| {
@@ -4396,6 +4398,7 @@ impl Store {
                         // all: kept here; partial or none: fetched on the first install.
                         "saved": r.get::<_, String>(8)?,
                         "goneAt": r.get::<_, Option<i64>>(9)?,
+                        "source": r.get::<_, String>(10)?,
                     }))
                 },
             )

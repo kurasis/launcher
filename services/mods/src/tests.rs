@@ -516,6 +516,7 @@ async fn an_address_brings_the_project_its_newest_files_pictures_and_dependencie
         .unwrap();
     let (_, api_versions) = t.get(&format!("/v1/projects/{dependency}/versions")).await;
     assert_eq!(api_versions["versions"][0]["saved"], "all");
+    assert_eq!(api_versions["versions"][0]["source"], "modrinth");
 
     // Searching finds both.
     let (_, found) = t.get("/v1/search?q=sodi").await;
@@ -556,6 +557,7 @@ async fn an_address_brings_the_project_its_newest_files_pictures_and_dependencie
     assert_eq!(status, StatusCode::OK);
     assert_eq!(found["found"].as_array().unwrap().len(), 1);
     assert_eq!(found["found"][0]["projectId"], project_id);
+    assert_eq!(found["found"][0]["source"], "modrinth");
 
     // Asked again: nothing is downloaded twice.
     let before = t.sites.asked.lock().unwrap().len();

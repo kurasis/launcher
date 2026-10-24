@@ -115,6 +115,7 @@ fn version(name: &str, games: &[&str], channel: &str) -> Version {
         }],
         dependencies: Vec::new(),
         gone_at: None,
+        source: None,
     }
 }
 

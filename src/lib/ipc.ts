@@ -127,6 +127,7 @@ import {
   type ModsReportReason,
   type ModsPlan,
   type ModsSetProblem,
+  type ModsFolderCheck,
   type ModsImportCreatePayload,
   type ModsImportFound,
   type ModsImportReport,
@@ -598,6 +599,9 @@ export const ipc = {
     invoke<string[]>('mods_harmful', { instanceId }),
   modsIdentify: (instanceId: string): Promise<ContentIdentified[]> =>
     invoke<ContentIdentified[]>('mods_identify', { instanceId }),
+  /** What the mods' jars say: problems of the set, and the versions of the player's own. */
+  modsFolderCheck: (instanceId: string): Promise<ModsFolderCheck> =>
+    invoke<ModsFolderCheck>('mods_folder_check', { instanceId }),
   modsUpdates: (instanceId: string): Promise<ContentUpdate[]> =>
     invoke<ContentUpdate[]>('mods_updates', { instanceId }),
   modsSetEnabled: (

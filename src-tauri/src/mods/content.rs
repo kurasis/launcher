@@ -207,6 +207,9 @@ pub struct LockedItem {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub requires: Option<Vec<String>>,
     pub installed_at: i64,
+    /// Where the catalog took its version from (unknown in older locks).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source: Option<String>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -455,6 +458,9 @@ pub struct PlanItem {
     /// What its jar says, as the catalog read it.
     #[serde(skip)]
     pub manifests: Option<Vec<mod_meta::Manifest>>,
+    /// Where the catalog took the version from (kept in the lock).
+    #[serde(skip)]
+    pub source: Option<String>,
 }
 
 /// A required project the catalog has no fitting version of.
@@ -679,6 +685,39 @@ pub struct SetProblem {
     pub loader: Option<String>,
 }
 
+/// The version a jar the launcher did not install gives itself.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OwnVersion {
+    /// As on disk now, relative to the game folder.
+    pub path: String,
+    pub version: String,
+}
+
+/// What the jars of an installation's mods folder say, for its list.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FolderCheck {
+    pub problems: Vec<SetProblem>,
+    pub versions: Vec<OwnVersion>,
+}
+
+/// The versions jars the launcher did not install give themselves: their own
+/// mod's, not one inside them.
+pub fn own_versions(lock: &ContentLock, local: &[LocalJar]) -> Vec<OwnVersion> {
+    local
+        .iter()
+        .filter(|jar| lock.at(enabled_form(&jar.path)).is_none())
+        .filter_map(|jar| {
+            let own = jar.manifests.iter().flat_map(|m| &m.mods).find(|m| !m.nested)?;
+            Some(OwnVersion {
+                path: jar.path.clone(),
+                version: own.version.clone()?,
+            })
+        })
+        .collect()
+}
+
 /// A version of the project asked for that runs here.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -901,6 +940,7 @@ impl<C: Catalog> Planner<'_, C> {
                     .filter_map(|d| d.project_id.clone())
                     .collect(),
                 manifests: file.manifests.clone(),
+                source: version.source.clone(),
             });
             if !same {
                 self.plan.total_bytes += file.size;
@@ -1745,6 +1785,7 @@ impl Installer {
                 dependency: item.dependency,
                 requires: Some(item.requires.clone()),
                 installed_at: now(),
+                source: item.source.clone(),
             });
         }
         // What it needs that was turned off.
@@ -1873,7 +1914,23 @@ impl Installer {
     }
 }
 
-/// Recognizes the player's own files by their SHA-1.
+/// Files the launcher installed before it noted where they came from:
+/// their paths as on disk and SHA-256, for the catalog to say.
+pub fn unsourced_files(root: &DataRoot, id: InstanceId) -> Vec<(String, String)> {
+    let lock = load_lock(root, id);
+    list(root, id)
+        .items
+        .into_iter()
+        .filter(|i| i.project_id.is_some() && i.source.is_none())
+        .filter_map(|i| {
+            let sha = super::sha256(lock.at(enabled_form(&i.path)).map(|l| l.sha256.as_str()))?;
+            Some((i.path, sha))
+        })
+        .take(MAX_IDENTIFY)
+        .collect()
+}
+
+/// Recognizes the player's own files by their SHA-1 (or SHA-256).
 pub async fn identify<C: Catalog>(
     catalog: &C,
     files: &[(String, String)],
@@ -1891,6 +1948,7 @@ pub async fn identify<C: Catalog>(
                     title: f.title.clone(),
                     icon: f.icon.clone(),
                     version_number: f.version_number.clone(),
+                    source: f.source.clone(),
                 });
             }
         }
@@ -2106,6 +2164,7 @@ pub struct Identified {
     pub title: Option<String>,
     pub icon: Option<String>,
     pub version_number: Option<String>,
+    pub source: Option<String>,
 }
 
 /// A newer version for a file in the installation.
@@ -2217,6 +2276,8 @@ pub struct ContentItem {
     pub version_number: Option<String>,
     pub icon: Option<String>,
     pub dependency: bool,
+    /// Where the catalog took its version from: `modrinth`, `curseforge`...
+    pub source: Option<String>,
     /// The modpack the installation was made from brought it.
     pub from_pack: bool,
 }
@@ -2286,6 +2347,7 @@ fn scan(
             version_number: None,
             icon: None,
             dependency: false,
+            source: None,
             from_pack: false,
         });
     }
@@ -2346,6 +2408,7 @@ pub fn list(root: &DataRoot, id: InstanceId) -> ContentView {
             item.version_number = Some(ours.version_number.clone());
             item.icon = ours.icon.clone();
             item.dependency = ours.dependency;
+            item.source = ours.source.clone().filter(|s| super::is_source(s));
         }
     }
     items.sort_by(|a, b| {

@@ -110,6 +110,7 @@ const version: ModsVersion = {
   ],
   dependencies: [],
   goneAt: null,
+  source: null,
 };
 
 const plan: ModsPlan = {
@@ -157,6 +158,7 @@ const content: ContentView = {
       versionNumber: '0.6.0',
       icon: null,
       dependency: false,
+      source: null,
       fromPack: false,
     },
     {
@@ -173,6 +175,7 @@ const content: ContentView = {
       versionNumber: null,
       icon: null,
       dependency: false,
+      source: null,
       fromPack: false,
     },
   ],
@@ -2216,6 +2219,7 @@ describe('Project page', () => {
     versionNumber: null,
     icon: null,
     dependency: false,
+    source: null,
     fromPack: false,
   });
 
