@@ -41,15 +41,24 @@ pub fn first_look(theme: Theme, language: &str, system_dark: Option<bool>) -> Fi
     if right_to_left(language) {
         set.push("r.dir = 'rtl'");
     }
+    // With the ground known, the page's color-scheme meta goes too: until the
+    // stylesheet loads, a dark system would have WebView2 show Chromium's dark
+    // canvas (#121212) over the ground, a dark flash in the light theme. The
+    // stylesheet then sets the color scheme itself (src/styles/tokens.css).
+    let quiet = ground.is_some();
     // The script runs as the document is created, before its <html> element:
     // the marks go on as soon as the parser adds it, before the first paint.
     let script = format!(
         "(function () {{ if (window.top !== window) return; \
-         function mark(r) {{ {}; }} \
-         if (document.documentElement) {{ mark(document.documentElement); return; }} \
-         var o = new MutationObserver(function () {{ \
-         var r = document.documentElement; if (r) {{ o.disconnect(); mark(r); }} }}); \
-         o.observe(document, {{ childList: true }}); }})();",
+         var quiet = {quiet}, marked = false; \
+         function look() {{ var r = document.documentElement; \
+         if (r && !marked) {{ marked = true; {}; }} \
+         if (quiet) {{ var m = document.querySelector('meta[name=\"color-scheme\"]'); \
+         if (m) {{ m.remove(); quiet = false; }} }} \
+         return marked && (!quiet || document.body !== null); }} \
+         if (look()) return; \
+         var o = new MutationObserver(function () {{ if (look()) o.disconnect(); }}); \
+         o.observe(document, {{ childList: true, subtree: true }}); }})();",
         set.join("; ")
     );
     FirstLook { ground, script }
@@ -142,7 +151,11 @@ mod tests {
         for look in [light, dark, system] {
             assert!(look.script.contains("r.dataset.boot = ''"));
             assert!(look.script.contains("window.top !== window"));
+            // The color-scheme meta goes only where the window has the ground.
+            assert!(look.script.contains("var quiet = true"));
         }
+        let unknown = first_look(Theme::System, "en", None).script;
+        assert!(unknown.contains("var quiet = false"));
     }
 
     #[test]
