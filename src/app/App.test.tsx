@@ -233,16 +233,15 @@ describe('App', () => {
       }),
     );
     render(<App />);
-    // Installation settings live on the Settings screen.
+    // An installation's settings open in place of its details, on the same screen.
     expect(await screen.findByText('4096 MiB')).toBeVisible();
     expect(screen.getByText('1280×720')).toBeVisible();
     expect(screen.queryByLabelText('Maximum memory (MiB)')).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Installation settings' }));
-    expect(screen.getByRole('tab', { name: 'Installations' })).toHaveAttribute(
-      'aria-selected',
-      'true',
-    );
-    expect(screen.getByLabelText('Installation')).toHaveValue(instance.id);
+    expect(
+      screen.getByRole('heading', { level: 3, name: /^Installation settings: / }),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('tab', { name: 'Installations' })).toBeNull();
     const memory = await screen.findByLabelText('Maximum memory (MiB)');
     expect(memory).toHaveValue(4096);
     expect(screen.getByText(/Between 1024 and 13108 MiB/)).toBeVisible();

@@ -3227,6 +3227,12 @@ skins-mod <channel>` there only checks the signature against the public key and
   script and loosens the page CSP), and ui-ux-pro-max's tests, data validator and catalog
   snapshots. Its search script reads only its own CSV files. Each changed SKILL.md says
   so at the top. An update of a skill is reviewed the same way before it is committed.
+- **Installation settings in place:** an installation's settings open in place of its
+  details on the Installations screen (Installation settings in its toolbar, and the
+  crash help's memory, Java and loader actions), with Back to details. Settings →
+  Installations keeps the same forms (D-036, D-044 and the loader hint still hold), and
+  the Java of an installation stays three choices (D-044). Fullscreen and launcher skins
+  stay boxes, not switches, as they apply with Save.
 - **Order:** tokens and shell, then Installations and the launch bar, the new
   installation form, the feed, the catalog, the mod page and the remaining screens, each
   in its own pull request. Features the new screens need from a service go to the thread

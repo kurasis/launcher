@@ -762,7 +762,10 @@
       "notesEmpty": "No notes yet.",
       "notesEdit": "Edit",
       "notesEditLabel": "Edit notes",
-      "cancel": "Cancel"
+      "cancel": "Cancel",
+      "settingsOf": "Installation settings: {name}",
+      "backToDetails": "Back to details",
+      "memoryWindow": "Memory and window"
     },
     "memory": {
       "recommended": "Recommended: {mib, number, ::group-off} MiB for {reason}.",

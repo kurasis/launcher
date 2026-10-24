@@ -210,7 +210,10 @@ describe('InstanceDetails', () => {
         ]}
       />,
     );
-    expect(screen.getByRole('button', { name: 'Verify files' })).toBeDisabled();
+    const queuedVerify = screen.getByRole('button', { name: 'Verify files' });
+    expect(queuedVerify).toHaveAttribute('aria-disabled', 'true');
+    fireEvent.click(queuedVerify);
+    expect(calls.filter((c) => c.cmd === 'repair_instance')).toHaveLength(1);
     // A vanilla installation that is not installed has no files to verify yet.
     rerender(<InstanceDetails instance={instanceFixture()} onEditSettings={onEditSettings} />);
     expect(screen.queryByRole('button', { name: 'Verify files' })).toBeNull();

@@ -103,6 +103,18 @@
   max-inline-size: 100%;
 }
 
+/* Four digits at most (a window's width and height). */
+.short {
+  inline-size: 8.75rem;
+  max-inline-size: 100%;
+}
+
+/* Memory, width and height on one line while there is room: the memory's hint wraps
+   under its field. */
+.sizes > :first-child {
+  max-inline-size: 12.5rem;
+}
+
 .field {
   display: grid;
   justify-items: start;
@@ -126,6 +138,32 @@
   flex-wrap: wrap;
   align-items: center;
   gap: var(--space-2);
+}
+
+/* A field and the button that goes with it, aligned at the bottom, wrapping when there
+   is no room (a version and Change and install; a path and Browse…). */
+.inlineRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--space-3);
+}
+
+.inlineRow > :first-child {
+  flex: 1 1 14rem;
+  min-inline-size: 0;
+  max-inline-size: 24rem;
+}
+
+/* What belongs to the choice above it, lined up with that choice's title. */
+.indent {
+  display: grid;
+  gap: var(--space-2);
+  padding-inline-start: calc(1rem + var(--space-2));
+}
+
+.pathInput {
+  inline-size: 100%;
 }
 
 /* "Saved." beside a Save button. */

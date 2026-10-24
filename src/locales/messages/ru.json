@@ -762,7 +762,10 @@
       "notesEmpty": "Заметок пока нет.",
       "notesEdit": "Изменить",
       "notesEditLabel": "Изменить заметки",
-      "cancel": "Отмена"
+      "cancel": "Отмена",
+      "settingsOf": "Настройки установки: {name}",
+      "backToDetails": "К сведениям",
+      "memoryWindow": "Память и окно"
     },
     "memory": {
       "recommended": "Рекомендуется {mib, number, ::group-off} МиБ: {reason}.",

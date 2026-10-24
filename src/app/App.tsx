@@ -113,7 +113,6 @@ export function App() {
   const consoleOpening = useShownError();
   const { clear: clearConsoleError, catcher: consoleFailed } = consoleOpening;
   const [settingsSection, setSettingsSection] = useState<SettingsSection>('general');
-  const [settingsInstance, setSettingsInstance] = useState<string | null>(null);
   const [modsSection, setModsSection] = useState<ModsSection>('mod');
   const [modsInstance, setModsInstance] = useState<string | null>(null);
   // The new-installation form asked for from elsewhere (the feed's Install, the
@@ -507,11 +506,6 @@ export function App() {
                     key={`${String(visits)}:${String(createRequest?.at ?? 0)}`}
                     snapshot={state.snapshot}
                     createRequest={createRequest}
-                    onEditSettings={(instanceId) => {
-                      setSettingsInstance(instanceId);
-                      setSettingsSection('installations');
-                      navigate('settings');
-                    }}
                     onOpenBackups={() => {
                       navigate('backups');
                     }}
@@ -567,11 +561,9 @@ export function App() {
               {view === 'screenshots' && <GalleryView snapshot={state.snapshot} />}
               {view === 'settings' && (
                 <SettingsView
-                  key={settingsInstance ?? ''}
                   snapshot={state.snapshot}
                   section={settingsSection}
                   onSection={setSettingsSection}
-                  instanceId={settingsInstance}
                 />
               )}
               {view === 'diagnostics' && <DiagnosticsView snapshot={state.snapshot} />}
