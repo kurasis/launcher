@@ -43,6 +43,13 @@ on:
         type: choice
         options: [automatic, mirror_first, origin_only]
         default: automatic
+      channel:
+        description: >-
+          The launcher's update channel (Settings, General): stable (what a new player has)
+          or beta, which also takes a skins mod release before its game test
+        type: choice
+        options: [stable, beta]
+        default: stable
       cleanup:
         description: Only put the machine back (stop and uninstall what an earlier, cancelled run left)
         type: boolean
@@ -168,6 +175,7 @@ jobs:
         env:
           ITEMS: ${{ matrix.items }}
           DOWNLOADS: ${{ inputs.downloads || 'automatic' }}
+          CHANNEL: ${{ inputs.channel || 'stable' }}
           CLEANUP: ${{ inputs.cleanup && 'yes' || 'no' }}
         run: |
           if ($env:CLEANUP -eq 'yes') {
@@ -178,7 +186,7 @@ jobs:
           & powershell.exe -NoProfile -ExecutionPolicy Bypass -File ut/input/windows.ps1 `
             -Setup $setup -Strings (Resolve-Path ut/input/ui-strings.json).Path `
             -Special (Resolve-Path ut/input/special.json).Path `
-            -Items $env:ITEMS -Downloads $env:DOWNLOADS -Out (New-Item -ItemType Directory -Force ut/out).FullName
+            -Items $env:ITEMS -Downloads $env:DOWNLOADS -Channel $env:CHANNEL -Out (New-Item -ItemType Directory -Force ut/out).FullName
           exit $LASTEXITCODE
       - name: Summary
         if: always()

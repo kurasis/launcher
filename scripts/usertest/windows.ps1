@@ -28,6 +28,9 @@ param(
   # Settings, Network: where downloads come from.
   [ValidateSet('automatic', 'mirror_first', 'origin_only')]
   [string]$Downloads = 'automatic',
+  # Settings, General: the update channel; beta also takes a skins mod release early.
+  [ValidateSet('stable', 'beta')]
+  [string]$Channel = 'stable',
   # Only puts the machine back: stops and uninstalls what an earlier run left.
   [switch]$CleanupOnly
 )
@@ -675,14 +678,14 @@ if (Test-Path (Join-Path $cache 'shared')) {
   try { Move-Item (Join-Path $cache 'shared') (Join-Path $data 'shared'); Say 'shared game files of earlier parts in place' } catch { Say "shared files not reused: $($_.Exception.Message)" }
 }
 
-if ($Downloads -ne 'automatic') {
-  # The choice a player makes in Settings, Network, written before the first start; the
-  # launcher fills in the rest of its settings.
+if ($Downloads -ne 'automatic' -or $Channel -ne 'stable') {
+  # The choices a player makes in Settings, Network and General, written before the first
+  # start; the launcher fills in the rest of its settings.
   New-Item -ItemType Directory -Force $data | Out-Null
   $utf8 = New-Object Text.UTF8Encoding $false
-  [IO.File]::WriteAllText((Join-Path $data 'settings.json'), "{`"schemaVersion`":1,`"downloadSource`":`"$Downloads`"}", $utf8)
+  [IO.File]::WriteAllText((Join-Path $data 'settings.json'), "{`"schemaVersion`":1,`"downloadSource`":`"$Downloads`",`"updateChannel`":`"$Channel`"}", $utf8)
 }
-Say "Downloads: $Downloads"
+Say "Downloads: $Downloads, update channel: $Channel"
 # Old games (LWJGL 2) take a mouse button as held only when Windows counts mouse
 # buttons, and with no mouse plugged in it may count none: noted for a failed click.
 Say "Mouse buttons Windows counts: $([UserTest.Win]::GetSystemMetrics(43))"
