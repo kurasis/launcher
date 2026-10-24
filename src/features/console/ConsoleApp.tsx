@@ -17,7 +17,7 @@ import styles from './ConsoleApp.module.css';
 
 const t = strings.console;
 /** How often the window asks the core for new lines. */
-const POLL_MS = 300;
+export const POLL_MS = 300;
 /** Lines kept in this window; the core keeps the same number. */
 const KEEP = 10_000;
 /** A full page from the core means more is waiting: ask again at once. */

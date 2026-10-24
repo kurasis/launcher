@@ -1,6 +1,6 @@
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { mockIPC } from '@tauri-apps/api/mocks';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeAll, describe, expect, it } from 'vitest';
 import type { AppInfo, AppSnapshot, InstanceSummary, MutationRequest } from '../lib/contracts';
 import { appInfoFixture, instanceFixture, snapshotFixture } from '../test/fixtures';
 import { setLanguage } from '../lib/strings';
@@ -114,10 +114,18 @@ function settingsWith(settings: Partial<AppSnapshot['settings']>) {
 }
 
 describe('App', () => {
+  // A catalog's first import goes through Vite, slow on a busy machine. Warmed here, the
+  // App still loads it itself: an import alone does not switch the language.
+  beforeAll(async () => {
+    await import('../locales/messages/ru.json');
+  });
+
   afterEach(() => {
     setLanguage('en');
   });
 
+  // The file's first test draws the whole interface twice, in English and then in
+  // Russian: about a second alone, several on a loaded machine.
   it('shows the interface and core errors in the chosen language', async () => {
     const instance = instanceFixture();
     fakeBackend(
@@ -142,7 +150,7 @@ describe('App', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent(
       'Максимум памяти на этом компьютере — от 1024 до 13108 МиБ.',
     );
-  });
+  }, 15_000);
 
   it('says when it is offline and checks again on request', async () => {
     const calls = fakeBackend(snapshotFixture({ network: 'offline' }));

@@ -2125,14 +2125,17 @@ describe('Catalog', () => {
         return hits(offset, offset === 0 ? 20 : 5, 25);
       },
     });
+    // Found by their words: over twenty tiles one role query takes a quarter of a second
+    // in jsdom, so roles are asked for only inside the row that offers the retry.
     // Without IntersectionObserver (jsdom), the list ends with a button.
-    fireEvent.click(await screen.findByRole('button', { name: 'Show more' }));
-    expect(await screen.findByText('The next projects did not load.')).toBeVisible();
+    fireEvent.click(await screen.findByText('Show more', { selector: 'button' }));
+    const row = await screen.findByText('The next projects did not load.');
+    expect(row).toBeVisible();
     expect(screen.getByText('Project 19')).toBeVisible();
     fail = false;
-    fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+    fireEvent.click(within(row).getByRole('button', { name: 'Try again' }));
     // The button goes while the page comes: the focus waits on the list's last project.
-    expect(screen.getByRole('button', { name: 'Project 19' })).toHaveFocus();
+    expect(screen.getByText('Project 19', { selector: 'button' })).toHaveFocus();
     expect(await screen.findByText('Project 24')).toBeVisible();
     expect(named('mods_search', calls)).toHaveLength(3);
   });
@@ -2181,10 +2184,15 @@ describe('Catalog', () => {
     });
     fireEvent.click(await screen.findByRole('button', { name: 'Show more' }));
     expect(await screen.findByText('Project 24')).toBeVisible();
-    // Written now: a run can end with the catalog on screen.
-    expect(JSON.parse(window.localStorage.getItem('launcher.mods.place') ?? 'null')).toMatchObject({
-      search: JSON.stringify(['mod', '', '1.21.1', 'fabric', 'downloads', [], null]),
-      count: 25,
+    // Written now: a run can end with the catalog on screen. The effect that writes it can
+    // run a task after the list shows.
+    await waitFor(() => {
+      expect(
+        JSON.parse(window.localStorage.getItem('launcher.mods.place') ?? 'null'),
+      ).toMatchObject({
+        search: JSON.stringify(['mod', '', '1.21.1', 'fabric', 'downloads', [], null]),
+        count: 25,
+      });
     });
   });
 

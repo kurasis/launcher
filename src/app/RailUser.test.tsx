@@ -88,8 +88,11 @@ describe('the player at the foot of the rail', () => {
     expect(asked()).toBe(1);
     answer = { alex: HEAD };
     now += 1;
-    act(() => {
+    // Awaited: the answer, the head it draws and the effect that stops hearing focus
+    // all run inside act, before the next focus, however busy the machine is.
+    await act(async () => {
       fireEvent.focus(window);
+      await Promise.resolve();
     });
     await waitFor(() => {
       expect(container.querySelector('img')).toHaveAttribute('src', HEAD);
