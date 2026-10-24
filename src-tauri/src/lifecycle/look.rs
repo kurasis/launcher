@@ -3,7 +3,8 @@
 //! theme. The window and WebView2 now take the interface's ground in the theme
 //! the page will show, and a script run before the page's own marks the
 //! document so index.html's placeholder of the shell shows in that theme and
-//! direction until the interface draws.
+//! direction until the interface draws. A chosen theme is also the window's
+//! own (its title bar, and the color scheme WebView2 prefers).
 
 use serde::Deserialize;
 use tauri::window::Color;
@@ -21,6 +22,8 @@ const LANGUAGES: &str = include_str!("../../../src/locales/languages.json");
 pub struct FirstLook {
     /// None when the theme follows a system whose choice is not known here.
     pub ground: Option<Color>,
+    /// The window's theme (`window_theme`).
+    pub window: Option<tauri::Theme>,
     /// Sets `data-boot`, the chosen theme and the direction on the document
     /// of the window's top frame. Only fixed words go into it.
     pub script: String,
@@ -41,27 +44,35 @@ pub fn first_look(theme: Theme, language: &str, system_dark: Option<bool>) -> Fi
     if right_to_left(language) {
         set.push("r.dir = 'rtl'");
     }
-    // With the ground known, the page's color-scheme meta goes too: until the
-    // stylesheet loads, a dark system would have WebView2 show Chromium's dark
-    // canvas (#121212) over the ground, a dark flash in the light theme. The
-    // stylesheet then sets the color scheme itself (src/styles/tokens.css).
-    let quiet = ground.is_some();
     // The script runs as the document is created, before its <html> element:
     // the marks go on as soon as the parser adds it, before the first paint.
     let script = format!(
         "(function () {{ if (window.top !== window) return; \
-         var quiet = {quiet}, marked = false; \
-         function look() {{ var r = document.documentElement; \
-         if (r && !marked) {{ marked = true; {}; }} \
-         if (quiet) {{ var m = document.querySelector('meta[name=\"color-scheme\"]'); \
-         if (m) {{ m.remove(); quiet = false; }} }} \
-         return marked && (!quiet || document.body !== null); }} \
-         if (look()) return; \
-         var o = new MutationObserver(function () {{ if (look()) o.disconnect(); }}); \
-         o.observe(document, {{ childList: true, subtree: true }}); }})();",
+         function mark(r) {{ {}; }} \
+         if (document.documentElement) {{ mark(document.documentElement); return; }} \
+         var o = new MutationObserver(function () {{ \
+         var r = document.documentElement; if (r) {{ o.disconnect(); mark(r); }} }}); \
+         o.observe(document, {{ childList: true }}); }})();",
         set.join("; ")
     );
-    FirstLook { ground, script }
+    FirstLook {
+        ground,
+        window: window_theme(theme),
+        script,
+    }
+}
+
+/// The window's own theme for the interface's: its title bar, and the color
+/// scheme WebView2 prefers. A dark scheme has WebView2 show Chromium's dark
+/// canvas (#121212) for a moment before the page's first frame, a dark flash
+/// in the light theme on a dark system. The system's theme leaves the window
+/// following the system, as the page does.
+pub fn window_theme(theme: Theme) -> Option<tauri::Theme> {
+    match theme {
+        Theme::Light => Some(tauri::Theme::Light),
+        Theme::Dark => Some(tauri::Theme::Dark),
+        Theme::System => None,
+    }
 }
 
 /// Whether the interface shows `language` right to left: the tag itself, else
@@ -130,11 +141,13 @@ mod tests {
     fn the_theme_and_direction_come_from_the_settings() {
         let light = first_look(Theme::Light, "en", Some(true));
         assert_eq!(light.ground, Some(LIGHT_GROUND));
+        assert_eq!(light.window, Some(tauri::Theme::Light));
         assert!(light.script.contains("r.dataset.theme = 'light'"));
         assert!(!light.script.contains("rtl"));
 
         let dark = first_look(Theme::Dark, "ar", None);
         assert_eq!(dark.ground, Some(DARK_GROUND));
+        assert_eq!(dark.window, Some(tauri::Theme::Dark));
         assert!(dark.script.contains("r.dataset.theme = 'dark'"));
         assert!(dark.script.contains("r.dir = 'rtl'"));
 
@@ -142,6 +155,7 @@ mod tests {
         let system = first_look(Theme::System, "ru", Some(true));
         assert_eq!(system.ground, Some(DARK_GROUND));
         assert!(!system.script.contains("dataset.theme"));
+        assert_eq!(system.window, None);
         assert_eq!(
             first_look(Theme::System, "ru", Some(false)).ground,
             Some(LIGHT_GROUND)
@@ -151,11 +165,7 @@ mod tests {
         for look in [light, dark, system] {
             assert!(look.script.contains("r.dataset.boot = ''"));
             assert!(look.script.contains("window.top !== window"));
-            // The color-scheme meta goes only where the window has the ground.
-            assert!(look.script.contains("var quiet = true"));
         }
-        let unknown = first_look(Theme::System, "en", None).script;
-        assert!(unknown.contains("var quiet = false"));
     }
 
     #[test]

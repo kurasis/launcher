@@ -196,7 +196,9 @@ impl LifecycleController {
                 }
                 None => look::first_look(Default::default(), "en", look::system_dark()),
             };
-            let mut builder = builder.initialization_script(look.script);
+            let mut builder = builder
+                .initialization_script(look.script)
+                .theme(look.window);
             if let Some(ground) = look.ground {
                 builder = builder.background_color(ground);
             }

@@ -3360,7 +3360,10 @@ skins-mod <channel>` there only checks the signature against the public key and
   only in the main window, in its theme and direction. While the core's state loads,
   the interface keeps the same screen and bar beside its real rail, with no screen
   marked current, instead of "Loading launcher state…" under Installations; the feed
-  then draws over it. Tests keep the two grounds equal to the tokens
+  then draws over it. A chosen light or dark theme is also the main window's own, from
+  its creation and on every change in Settings: its title bar, and the color scheme
+  WebView2 prefers, which otherwise showed Chromium's dark canvas for about 70 ms in
+  the light theme on a dark Windows. Tests keep the two grounds equal to the tokens
   (`lifecycle/look.rs`) and the interface's copy equal to index.html's.
 - **Verification:** screenshots in light, dark, Arabic and at the 820 px minimum width for
   each pull request; a Windows package for window changes (CLAUDE.md).
