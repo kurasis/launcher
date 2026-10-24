@@ -1055,7 +1055,6 @@
       "files": "Pictures and files",
       "filesHint": "Up to 5 pictures and 5 logs or configs. A picture can also be pasted with Ctrl+V; pictures are sent without their metadata.",
       "picture": "Attached picture",
-      "remove": "Remove",
       "dropHere": "Drag pictures and text files here",
       "chooseFiles": "choose files",
       "fromGallery": "from screenshots",
@@ -1064,7 +1063,7 @@
       "logsFound": "Logs found. Nicks, addresses, world names and chat are removed. Untick what you do not want to send.",
       "show": "Show",
       "linkAccount": "Link my launcher account",
-      "linkAccountHint": "to see answers on other computers too.",
+      "linkAccountHint": "Then the answers show on your other computers too.",
       "privacy": "The review goes to reviews.lapi.sh with the launcher version, the system and the language. It is kept for 180 days, files for 90.",
       "sending": "Sending…",
       "send": "Send",
@@ -1136,7 +1135,13 @@
         "updates": "Launcher updates",
         "settings": "Settings",
         "performance": "Speed and memory"
-      }
+      },
+      "removeFile": "Remove {name}",
+      "open": "Open",
+      "answerQuote": "Answer: “{reply}”",
+      "allMine": "All my reviews",
+      "fresh": "New",
+      "retry": "Try again"
     },
     "deleteInstance": {
       "delete": "Delete installation",
