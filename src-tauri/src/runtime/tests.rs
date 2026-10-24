@@ -1,6 +1,8 @@
 //! End-to-end runtime installation against the local fixture server with a fake
 //! `java` script (Unix only: the script relies on `/bin/sh`).
 
+use std::time::{Duration, SystemTime};
+
 use sha1::Digest as _;
 
 use super::extract::tests::{E, tar_gz};
@@ -236,6 +238,126 @@ async fn corruption_is_detected_before_execution_and_rebuilt() {
     }
     assert_eq!(f.server.hits("/jre.tar.gz"), 5);
     assert!(f.leftovers().is_empty());
+}
+
+/// Moves every file's time an hour back, as for a runtime installed earlier.
+fn settle(dir: &Path) {
+    let then = SystemTime::now() - Duration::from_secs(3600);
+    for entry in fs::read_dir(dir).unwrap() {
+        let entry = entry.unwrap();
+        let kind = entry.file_type().unwrap();
+        if kind.is_dir() {
+            settle(&entry.path());
+        } else if kind.is_file() {
+            let file = fs::File::options().write(true).open(entry.path()).unwrap();
+            file.set_modified(then).unwrap();
+        }
+    }
+}
+
+/// Rewrites a file with other bytes of the same size, keeping its time.
+fn rewrite_unseen(path: &Path, bytes: &[u8]) {
+    let modified = fs::metadata(path).unwrap().modified().unwrap();
+    assert_eq!(fs::metadata(path).unwrap().len(), bytes.len() as u64);
+    fs::write(path, bytes).unwrap();
+    let file = fs::File::options().write(true).open(path).unwrap();
+    file.set_modified(modified).unwrap();
+}
+
+fn valid(verification: Verification) -> bool {
+    matches!(verification, Verification::Valid(_))
+}
+
+#[tokio::test]
+async fn a_launch_hashes_again_only_when_the_files_look_different() {
+    let f = Fixture::new().await;
+    let package = f.package("/jre.tar.gz", &f.package_bytes(21, &[]), ImageType::Jre);
+    let installed = f.ensure(&package).await.unwrap();
+    let stamp = installed.dir.join(stamp::STAMP);
+
+    // Files written a moment ago are hashed, but not stamped: a change in the
+    // same clock tick would not show.
+    assert!(valid(verify_for_launch(&f.root, &package).unwrap()));
+    assert!(!stamp.exists());
+
+    settle(&installed.dir);
+    assert!(valid(verify_for_launch(&f.root, &package).unwrap()));
+    assert!(stamp.exists(), "a full check stamps settled files");
+    // The stamp is the launcher's own file, not part of the tree.
+    assert!(valid(verify_installed(&f.root, &package).unwrap()));
+
+    // Same size and time: the launch trusts the stamp; a full check (Repair)
+    // finds it and forgets the stamp, so the next launch finds it too.
+    rewrite_unseen(&installed.dir.join("lib/libjli.so"), b"tampered!!!!!!");
+    assert!(valid(verify_for_launch(&f.root, &package).unwrap()));
+    assert_eq!(
+        verify_installed(&f.root, &package).unwrap(),
+        Verification::Invalid("lib/libjli.so".into())
+    );
+    assert!(!stamp.exists());
+    assert_eq!(
+        verify_for_launch(&f.root, &package).unwrap(),
+        Verification::Invalid("lib/libjli.so".into())
+    );
+    fs::write(installed.dir.join("lib/libjli.so"), b"native library").unwrap();
+
+    // Anything the file system shows is caught at launch.
+    for (damage, path) in [
+        (0, "lib/libjli.so"),
+        (1, "lib/unexpected.so"),
+        (2, "lib/alias.so"),
+        (3, "NOTICE"),
+        (4, "bin/java"),
+    ] {
+        settle(&installed.dir);
+        assert!(valid(verify_for_launch(&f.root, &package).unwrap()));
+        assert!(stamp.exists());
+        let full = installed.dir.join(path);
+        match damage {
+            // Same size, new time.
+            0 => fs::write(&full, b"tampered!!!!!!").unwrap(),
+            1 => fs::write(&full, b"x").unwrap(),
+            2 => {
+                fs::remove_file(&full).unwrap();
+                std::os::unix::fs::symlink("../NOTICE", &full).unwrap();
+            }
+            3 => fs::remove_file(&full).unwrap(),
+            _ => {
+                use std::os::unix::fs::PermissionsExt;
+                fs::set_permissions(&full, fs::Permissions::from_mode(0o644)).unwrap();
+            }
+        }
+        assert_eq!(
+            verify_for_launch(&f.root, &package).unwrap(),
+            Verification::Invalid(path.into()),
+            "{path}"
+        );
+        assert!(!stamp.exists());
+        let repaired = f.ensure(&package).await.unwrap();
+        assert!(!repaired.reused);
+    }
+
+    // A stamp for another tree, or junk, is ignored and replaced.
+    settle(&installed.dir);
+    for junk in [
+        br#"{"schemaVersion":1,"treeReceiptSha256":"00","entries":[]}"#.as_slice(),
+        b"not json",
+    ] {
+        fs::write(&stamp, junk).unwrap();
+        assert!(valid(verify_for_launch(&f.root, &package).unwrap()));
+        assert_ne!(fs::read(&stamp).unwrap(), junk);
+    }
+    let mut other =
+        serde_json::from_slice::<serde_json::Value>(&fs::read(&stamp).unwrap()).unwrap();
+    other["treeReceiptSha256"] = serde_json::json!("ab".repeat(32));
+    let other = serde_json::to_vec(&other).unwrap();
+    fs::write(&stamp, &other).unwrap();
+    rewrite_unseen(&installed.dir.join("lib/libjli.so"), b"tampered!!!!!!");
+    assert_eq!(
+        verify_for_launch(&f.root, &package).unwrap(),
+        Verification::Invalid("lib/libjli.so".into()),
+        "a stamp of another tree is not trusted"
+    );
 }
 
 #[tokio::test]
