@@ -36,6 +36,9 @@ use crate::store::Store;
 pub const OWNER: &str = "owner";
 /// Addresses one `add` takes (the workflow passes at most 32 arguments).
 const MAX_ADD: usize = 32;
+/// Seconds between the packs `packs read` queues: each keeps a worker busy
+/// with all its files.
+const PACK_READ_SPACING: i64 = 300;
 
 /// What `health` calls a problem.
 const HOUR: i64 = 3600;
@@ -606,6 +609,55 @@ impl Owner<'_> {
                 counts.join(", ")
             },
         );
+        Ok(lines)
+    }
+
+    /// Packs' files read before anyone installs them (D-066): `read` queues
+    /// each shown modpack's newest version, so that every file it brings is
+    /// kept and its project joins the catalog; without it, how far that went.
+    /// Fixed words and numbers.
+    pub fn packs(&self, args: &[String]) -> Result<Vec<String>, String> {
+        let read = match args {
+            [] => false,
+            [word] if word == "read" => true,
+            _ => return Err("usage: lapi-mods packs [read]".to_owned()),
+        };
+        let mut states = std::collections::BTreeMap::<String, usize>::new();
+        let mut queued = 0;
+        for (_, version) in self.store.newest_pack_versions()? {
+            if crate::import::pack_archive(self.store, &version)?.is_none() {
+                *states.entry("no archive".to_owned()).or_default() += 1;
+                continue;
+            }
+            let state = self.store.job_state(&crate::import::pack_key(&version))?;
+            // One due every few minutes, so that players' asks are not
+            // kept waiting behind them all.
+            if read
+                && !matches!(&state, Some((s, _)) if s == "queued" || s == "running")
+                && crate::import::queue_pack(
+                    self.store,
+                    &version,
+                    self.now + queued as i64 * PACK_READ_SPACING,
+                )?
+            {
+                queued += 1;
+            }
+            let word = match state {
+                None => "not read".to_owned(),
+                // A job's error is one of our codes; anything else is not printed.
+                Some((s, Some(error))) if s == "failed" => {
+                    let code = error.len() <= 32
+                        && error.bytes().all(|b| b.is_ascii_lowercase() || b == b'_');
+                    format!("failed {}", if code { error.as_str() } else { "other" })
+                }
+                Some((s, _)) => s,
+            };
+            *states.entry(word).or_default() += 1;
+        }
+        let mut lines: Vec<String> = states.iter().map(|(s, n)| format!("{s} {n}")).collect();
+        if read {
+            lines.push(format!("queued {queued}"));
+        }
         Ok(lines)
     }
 

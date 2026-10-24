@@ -347,6 +347,8 @@ pub fn seed(app: &App, missing: &mut Vec<String>) -> Result<usize, String> {
 /// Packs' files looked up at Modrinth at a time, and how long an answer holds.
 pub const PACK_LOOKUPS_AT_ONCE: usize = 10;
 pub const PACK_LOOKUP_AGAIN: i64 = 30 * 86_400;
+/// Versions' files linked to their pack copies at a time.
+const PACK_COPIES_AT_ONCE: usize = 500;
 
 /// Adds the projects of packs' mods, resource packs and shaders that the
 /// catalog lacks, so each has a page, a title and an icon (D-066). A file's
@@ -355,8 +357,14 @@ pub const PACK_LOOKUP_AGAIN: i64 = 30 * 86_400;
 /// number: the site's old address `/projects/<number>` leads to its page.
 /// One found nowhere is asked again after `PACK_LOOKUP_AGAIN`. Like the
 /// most downloaded, a few at a time and only while the queue is nearly
-/// empty. Returns how many were queued.
+/// empty. Returns how many were queued. First, a version whose file a pack
+/// brought from the same address gets that copy: an older CurseForge
+/// version, kept by nobody and given no hashes by the site, is then found
+/// by the hashes a pack's file has.
 pub async fn pack_projects(app: &App) -> Result<usize, String> {
+    for (version, ord, sha256) in app.store.kept_in_packs(PACK_COPIES_AT_ONCE)? {
+        app.store.file_kept(&version, ord, &sha256)?;
+    }
     if app.store.jobs_due(now())? >= SEED_WHEN_BELOW {
         return Ok(0);
     }
@@ -477,10 +485,12 @@ pub fn queue_files(app: &App, version: &str, request: Option<&str>) -> Result<bo
 
 /// The archive of a modpack version, the main one first: its `.mrpack`, or
 /// the `.zip` of a modpack (CurseForge's).
-pub fn pack_archive(app: &App, version: &str) -> Result<Option<crate::store::FileRow>, String> {
-    let modpack = app.store.version_kind(version)?.as_deref() == Some("modpack");
-    Ok(app
-        .store
+pub fn pack_archive(
+    store: &crate::store::Store,
+    version: &str,
+) -> Result<Option<crate::store::FileRow>, String> {
+    let modpack = store.version_kind(version)?.as_deref() == Some("modpack");
+    Ok(store
         .files(version)?
         .into_iter()
         .filter(|f| {
@@ -490,17 +500,17 @@ pub fn pack_archive(app: &App, version: &str) -> Result<Option<crate::store::Fil
         .min_by_key(|f| (!f.primary, f.ord)))
 }
 
-/// Queues reading a modpack version and keeping its files. A failed one is
-/// tried again when asked an hour later.
-pub fn queue_pack(app: &App, version: &str) -> Result<bool, String> {
-    match app.store.version_state(version)? {
-        Some((project, _)) => app.store.enqueue(
+/// Queues reading a modpack version and keeping its files, from `at`. A
+/// failed one is tried again when asked an hour later.
+pub fn queue_pack(store: &crate::store::Store, version: &str, at: i64) -> Result<bool, String> {
+    match store.version_state(version)? {
+        Some((project, _)) => store.enqueue(
             &pack_key(version),
             "pack",
             &json!({ "version": version }),
             None,
             Some(&project),
-            now(),
+            at,
             Some(3600),
         ),
         None => Ok(false),
@@ -1884,7 +1894,7 @@ async fn files(app: &App, version: &str, request: Option<&str>) -> Result<(), Jo
 }
 
 async fn pack_files(app: &App, version: &str) -> Result<(), JobError> {
-    let Some(archive) = pack_archive(app, version)? else {
+    let Some(archive) = pack_archive(&app.store, version)? else {
         return Err(JobError::new("not_a_pack", false));
     };
     if let Some(sha256) = &archive.sha256

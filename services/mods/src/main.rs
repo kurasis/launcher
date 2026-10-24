@@ -186,7 +186,8 @@ fn main() -> std::process::ExitCode {
             _ => Err("usage: lapi-mods scan <file>".to_owned()),
         },
         Some(
-            command @ ("find" | "review" | "block" | "unblock" | "remove" | "forget" | "restore"),
+            command @ ("find" | "review" | "block" | "unblock" | "remove" | "forget" | "restore"
+                | "packs"),
         ) => owner_command(command, &args[1..]).map(|lines| {
             for line in lines {
                 println!("{line}");
@@ -363,6 +364,7 @@ fn owner_command(command: &str, args: &[String]) -> Result<Vec<String>, String> 
         ("clash", args) => owner.clash(args),
         ("collection", args) => owner.collection(args),
         ("categories", args) => owner.categories(args),
+        ("packs", args) => owner.packs(args),
         ("health", []) => owner.health(popular(), &data.join("backups")),
         ("remove", [project, reason @ ..]) => owner.remove(project, &owner::reason(reason)),
         ("forget", [h, rest @ ..]) => match (hash(h)?, rest) {

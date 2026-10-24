@@ -32,7 +32,10 @@ name: Mods service
 # "ru|en|ar", "<text>"], ["put", "<key>", "<project>", ...] or ["remove",
 # "<key>"]) and prints keys, counts and languages; task=categories counts
 # the projects of a kind (`args` [] or ["<kind>"]) in each category of the
-# shared list and the site slugs it leaves out: our IDs and numbers. The
+# shared list and the site slugs it leaves out: our IDs and numbers;
+# task=packs counts how far the reading of each modpack's newest version went
+# and task=packs-read queues those not read yet, so their files are kept and
+# get cards before anyone installs them: fixed words and numbers. The
 # service's daily checks run in the workflow Mods health. The secrets
 # LAPI_MODS_CF_ZONE and LAPI_MODS_CF_TOKEN (a token that may only purge the
 # zone's cache) let a block clear the file from Cloudflare's cache. The
@@ -83,6 +86,8 @@ on:
             clash,
             collection,
             categories,
+            packs,
+            packs-read,
           ]
         default: deploy
       hash:
@@ -316,7 +321,7 @@ jobs:
     name: Owner's command
     if: >-
       github.event_name == 'workflow_dispatch'
-      && contains(fromJSON('["block", "unblock", "review-count", "external", "virustotal", "add", "slug", "clash", "collection", "categories"]'), inputs.task)
+      && contains(fromJSON('["block", "unblock", "review-count", "external", "virustotal", "add", "slug", "clash", "collection", "categories", "packs", "packs-read"]'), inputs.task)
     # It changes what players get: the same approval as a deploy.
     environment: production
     runs-on: ubuntu-24.04
@@ -345,6 +350,8 @@ jobs:
               command="$TASK ${HASH,,}"
               ;;
             review-count) command="review --count" ;;
+            packs) command="packs" ;;
+            packs-read) command="packs read" ;;
             external|virustotal|add|slug|clash|collection|categories)
               # The arguments go on the standard input as JSON, never
               # through a shell; the service checks each one again.
