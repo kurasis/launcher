@@ -5,9 +5,10 @@ import styles from './Confirm.module.css';
 /**
  * "Block Notch_1? They will not be told." in place, under what it is about: the focus
  * moves to it, Escape or Cancel closes it (and only it), and the answer is pressed.
- * While the answer goes, neither closes it: what was pressed is under way. The answer
- * that deletes or stops is drawn as danger; one that only does something big (copies
- * the data) as primary.
+ * While the answer goes, neither closes it: what was pressed is under way. While
+ * something else runs (`held`), the answer waits but the question still closes. The
+ * answer that deletes or stops is drawn as danger; one that only does something big
+ * (copies the data) as primary.
  */
 export function Confirm({
   label,
@@ -17,6 +18,7 @@ export function Confirm({
   actionVariant = 'danger',
   cancel,
   pending,
+  held = false,
   onYes,
   onNo,
 }: {
@@ -31,6 +33,8 @@ export function Confirm({
   /** The button that closes it. */
   cancel: string;
   pending: boolean;
+  /** Something else runs: the answer cannot go yet, but Cancel and Escape still close. */
+  held?: boolean;
   onYes: () => void;
   onNo: () => void;
 }) {
@@ -67,9 +71,9 @@ export function Confirm({
         <Button
           variant={actionVariant}
           size="small"
-          aria-disabled={pending || undefined}
+          aria-disabled={pending || held || undefined}
           onClick={() => {
-            if (!pending) onYes();
+            if (!pending && !held) onYes();
           }}
         >
           {action}

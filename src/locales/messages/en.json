@@ -2149,7 +2149,11 @@
           "too_big": "These files are too large for a pack:",
           "other": "The catalog refused the pack."
         },
-        "publishSending": "Sending the pack to the catalog: {sent} of {total}…"
+        "publishSending": "Sending the pack to the catalog: {sent} of {total}…",
+        "updatesFound": "{count, plural, one {# file has an update.} other {# files have updates.}}",
+        "packOffered": "The modpack has a newer version, {version}.",
+        "packHint": "The modpack’s files are updated with it. Your own mods on top of it stay.",
+        "removeQuestion": "Remove {name} from the installation? The file is deleted."
       },
       "catalog": {
         "requestsGroup": "Your requests to the catalog",

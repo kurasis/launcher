@@ -709,12 +709,12 @@ describe('ModsView', () => {
 
   it('lists, turns off and removes what an installation holds', async () => {
     const calls = setup({}, 'installed');
-    const mods = await screen.findByRole('region', { name: 'Mods' });
+    const mods = await screen.findByRole('region', { name: /^Mods \d/ });
     expect(within(mods).getByText('Sodium')).toBeVisible();
     expect(within(mods).getByText('Added by hand')).toBeVisible();
     expect(within(mods).getByText('Off')).toBeVisible();
 
-    fireEvent.click(within(mods).getByRole('checkbox', { name: 'Sodium is on' }));
+    fireEvent.click(within(mods).getByRole('switch', { name: '\u2068Sodium\u2069 is on' }));
     await waitFor(() => {
       expect(named('mods_set_enabled', calls)).toHaveLength(1);
     });
@@ -762,11 +762,13 @@ describe('ModsView', () => {
       },
       'installed',
     );
-    const mods = await screen.findByRole('region', { name: 'Mods' });
+    const mods = await screen.findByRole('region', { name: /^Mods \d/ });
     expect(await within(mods).findByText('Fabric API')).toBeVisible();
     expect(within(mods).getByText('0.100.0')).toBeVisible();
     expect(within(mods).getByText('From the modpack')).toBeVisible();
-    expect(within(mods).getByRole('checkbox', { name: 'Fabric API is on' })).toBeVisible();
+    expect(
+      within(mods).getByRole('switch', { name: '\u2068Fabric API\u2069 is on' }),
+    ).toBeVisible();
     expect(mods.querySelector(`img[src="${PICTURE}"]`)).not.toBeNull();
     expect(within(mods).getAllByRole('button', { name: 'In the catalog' })).toHaveLength(2);
     expect(named('mods_identify', calls)[0]?.args).toEqual({ instanceId: fabric.id });
@@ -781,7 +783,7 @@ describe('ModsView', () => {
       },
       'installed',
     );
-    const mods = await screen.findByRole('region', { name: 'Mods' });
+    const mods = await screen.findByRole('region', { name: /^Mods \d/ });
     expect(within(mods).getByText('mine.jar')).toBeVisible();
     expect(screen.queryByRole('alert')).toBeNull();
   });
@@ -836,15 +838,15 @@ describe('ModsView', () => {
       },
       'installed',
     );
-    const mods = await screen.findByRole('region', { name: 'Mods' });
-    fireEvent.click(within(mods).getByRole('checkbox', { name: 'Sodium is on' }));
+    const mods = await screen.findByRole('region', { name: /^Mods \d/ });
+    fireEvent.click(within(mods).getByRole('switch', { name: '\u2068Sodium\u2069 is on' }));
     expect(
-      await within(mods).findByText('Needed by Iris; they will not start without it.'),
+      await within(mods).findByText('Needed by \u2068Iris\u2069; they will not start without it.'),
     ).toBeVisible();
     expect(named('mods_set_enabled', calls)).toHaveLength(0);
     fireEvent.click(within(mods).getByRole('button', { name: 'Cancel' }));
-    expect(within(mods).queryByText(/Needed by Iris/)).toBeNull();
-    fireEvent.click(within(mods).getByRole('checkbox', { name: 'Sodium is on' }));
+    expect(within(mods).queryByText(/Needed by/)).toBeNull();
+    fireEvent.click(within(mods).getByRole('switch', { name: '\u2068Sodium\u2069 is on' }));
     fireEvent.click(await within(mods).findByRole('button', { name: 'Turn off anyway' }));
     await waitFor(() => {
       expect(named('mods_set_enabled', calls)).toHaveLength(1);
@@ -853,7 +855,7 @@ describe('ModsView', () => {
     // Removing: what only it needed goes too, unless the player says not.
     fireEvent.click(within(mods).getAllByRole('button', { name: 'Remove' })[0] as HTMLElement);
     const also = await within(mods).findByRole('checkbox', {
-      name: 'Also remove what only it needed: Library',
+      name: 'Also remove what only it needed: \u2068Library\u2069',
     });
     expect(also).toBeChecked();
     fireEvent.click(within(mods).getByRole('button', { name: 'Remove the file' }));
@@ -882,7 +884,7 @@ describe('ModsView', () => {
       'installed',
     );
     fireEvent.click(await screen.findByRole('button', { name: 'Check for updates' }));
-    expect(await screen.findByText('Update: 0.6.1')).toBeVisible();
+    expect(await screen.findByText('Update: \u20680.6.1\u2069')).toBeVisible();
     fireEvent.click(screen.getByRole('button', { name: 'Update' }));
     await screen.findByRole('dialog');
     await waitFor(() => {
@@ -891,6 +893,226 @@ describe('ModsView', () => {
     expect(named('mods_plan', calls)[0]?.args.payload).toMatchObject({
       version: '00000000-0000-4000-8000-000000000011',
       replaces: 'mods/sodium.jar',
+    });
+  });
+
+  it('says what a check found at the toolbar, and updates everything with the focus kept', async () => {
+    const offers = [
+      {
+        path: 'mods/sodium.jar',
+        projectId: PROJECT,
+        fromVersionId: VERSION,
+        toVersionId: '00000000-0000-4000-8000-000000000011',
+        toNumber: '0.6.1',
+      },
+      {
+        path: 'mods/mine.jar.disabled',
+        projectId: PROJECT,
+        fromVersionId: VERSION,
+        toVersionId: '00000000-0000-4000-8000-000000000012',
+        toNumber: '2.0',
+      },
+    ];
+    // The first check and the first install wait for the test; so does the check after
+    // "Update all", which then finds nothing.
+    const answers: ((found: typeof offers) => void)[] = [];
+    let installed: () => void = () => undefined;
+    const calls = setup(
+      {
+        mods_updates: () =>
+          new Promise<typeof offers>((resolve) => {
+            answers.push(resolve);
+          }),
+        mods_install: () =>
+          named('mods_install', calls).length === 1
+            ? new Promise<number>((resolve) => {
+                installed = () => {
+                  resolve(1);
+                };
+              })
+            : 1,
+      },
+      'installed',
+    );
+    const check = await screen.findByRole('button', { name: 'Check for updates' });
+    check.focus();
+    fireEvent.click(check);
+    // Checking, it waits but keeps the focus (a disabled button drops it in WebView2).
+    expect(check).toHaveTextContent('Checking…');
+    expect(check).toHaveAttribute('aria-disabled', 'true');
+    expect(check).toHaveFocus();
+    fireEvent.click(check);
+    expect(named('mods_updates', calls)).toHaveLength(1);
+    answers[0]?.(offers);
+    expect(await screen.findByText('2 files have updates.')).toBeVisible();
+
+    const all = screen.getByRole('button', { name: 'Update all (2)' });
+    all.focus();
+    fireEvent.click(all);
+    expect(await screen.findByText('Updating 0 of 2…')).toHaveAttribute('role', 'status');
+    expect(all).toHaveAttribute('aria-disabled', 'true');
+    expect(all).toHaveFocus();
+    fireEvent.click(all);
+    await waitFor(() => {
+      expect(named('mods_install', calls)).toHaveLength(1);
+    });
+    installed();
+    // While the check after it runs, the old offers are not said again.
+    expect(await screen.findByText('Everything is updated.')).toHaveAttribute('role', 'status');
+    expect(named('mods_install', calls)).toHaveLength(2);
+    expect(named('mods_plan', calls)).toHaveLength(2);
+    // Nothing is offered until the check answers: the button goes, and the focus goes
+    // back to Check.
+    expect(screen.queryByRole('button', { name: /Update all/ })).toBeNull();
+    await waitFor(() => {
+      expect(check).toHaveFocus();
+    });
+    expect(check).toHaveTextContent('Checking…');
+    expect(named('mods_updates', calls)).toHaveLength(2);
+    answers[1]?.([]);
+    // What "Update all" did, then what the check after it found, in the same line.
+    expect(
+      await screen.findByText('Everything is updated. Everything the catalog knows is up to date.'),
+    ).toHaveAttribute('role', 'status');
+  });
+
+  it('keeps the focus on a switch while its file is renamed, and greys out while the game runs', async () => {
+    let off = false;
+    const calls = setup(
+      {
+        mods_set_enabled: () => {
+          off = true;
+          return null;
+        },
+        // Turned off, the file gets its ".disabled" name.
+        mods_content: () =>
+          off
+            ? {
+                ...content,
+                items: content.items.map((i, n) =>
+                  n === 0 ? { ...i, path: 'mods/sodium.jar.disabled', enabled: false } : i,
+                ),
+              }
+            : content,
+      },
+      'installed',
+    );
+    const mods = await screen.findByRole('region', { name: /^Mods \d/ });
+    const sodium = within(mods).getByRole('switch', { name: '⁨Sodium⁩ is on' });
+    sodium.focus();
+    fireEvent.click(sodium);
+    await waitFor(() => {
+      expect(named('mods_set_enabled', calls)).toHaveLength(1);
+    });
+    await waitFor(() => {
+      expect(sodium).not.toBeChecked();
+    });
+    // The same switch, still in its row, still with the focus.
+    expect(sodium).toBeInTheDocument();
+    expect(sodium).toHaveFocus();
+    cleanup();
+
+    // While the game runs nothing here changes, and the controls look it.
+    setup({}, 'installed', fabric.id, [{ ...fabric, busy: true }]);
+    const busy = await screen.findByRole('region', { name: /^Mods \d/ });
+    expect(
+      screen.getByText('The installation is busy; changes wait until it is free.'),
+    ).toBeVisible();
+    expect(within(busy).getByRole('switch', { name: '⁨Sodium⁩ is on' })).toBeDisabled();
+    for (const button of within(busy).getAllByRole('button', { name: 'Remove' })) {
+      expect(button).toBeDisabled();
+    }
+    expect(screen.getByRole('button', { name: 'Check for updates' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Save as a modpack' })).toBeDisabled();
+  });
+
+  it('gives the focus to Check for updates once a harmful file it removed is gone', async () => {
+    let removed = false;
+    let harmful: (paths: string[]) => void = () => undefined;
+    setup(
+      {
+        mods_remove: () => {
+          removed = true;
+          return null;
+        },
+        // The warning's list comes back after the folder's.
+        mods_harmful: () =>
+          removed
+            ? new Promise<string[]>((resolve) => {
+                harmful = resolve;
+              })
+            : ['mods/mine.jar.disabled'],
+      },
+      'installed',
+    );
+    expect(await screen.findByText('Harmful files found')).toBeVisible();
+    const remove = screen.getAllByRole('button', { name: 'Remove' })[0] as HTMLElement;
+    remove.focus();
+    fireEvent.click(remove);
+    await waitFor(() => {
+      expect(removed).toBe(true);
+    });
+    harmful([]);
+    await waitFor(() => {
+      expect(screen.queryByText('Harmful files found')).toBeNull();
+    });
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Check for updates' })).toHaveFocus();
+    });
+  });
+
+  it('asks in place before removing or turning off, and gives the focus back to what asked', async () => {
+    setup(
+      {
+        mods_needed_by: () => ({ neededBy: ['Iris'], unused: [] }),
+      },
+      'installed',
+    );
+    const mods = await screen.findByRole('region', { name: /^Mods \d/ });
+    const remove = within(mods).getAllByRole('button', { name: 'Remove' })[1] as HTMLElement;
+    // Each row's buttons are told apart by the row's name.
+    expect(remove).toHaveAccessibleDescription('mine.jar');
+    remove.focus();
+    fireEvent.click(remove);
+    const question = await within(mods).findByRole('alertdialog', { name: 'mine.jar' });
+    expect(question).toHaveAccessibleDescription(
+      'Remove \u2068mine.jar\u2069 from the installation? The file is deleted. ' +
+        'Needed by \u2068Iris\u2069; they will not start without it.',
+    );
+    await waitFor(() => {
+      expect(question).toHaveFocus();
+    });
+    fireEvent.click(within(question).getByRole('button', { name: 'Cancel' }));
+    await waitFor(() => {
+      expect(within(mods).getAllByRole('button', { name: 'Remove' })[1]).toHaveFocus();
+    });
+
+    const sodium = within(mods).getByRole('switch', { name: '\u2068Sodium\u2069 is on' });
+    sodium.focus();
+    fireEvent.click(sodium);
+    const off = await within(mods).findByRole('alertdialog', { name: 'Sodium' });
+    fireEvent.keyDown(off, { key: 'Escape' });
+    await waitFor(() => {
+      expect(sodium).toHaveFocus();
+    });
+  });
+
+  it('shows a letter for a file without a picture, and says when the folder cannot open', async () => {
+    const calls = setup(
+      {
+        open_instance_folder: () => {
+          // eslint-disable-next-line @typescript-eslint/only-throw-error -- mirrors the IPC error envelope
+          throw { code: 'PERMISSION_DENIED', message: 'The folder cannot be opened.' };
+        },
+      },
+      'installed',
+    );
+    const mods = await screen.findByRole('region', { name: /^Mods \d/ });
+    expect(within(mods).getByText('M')).toHaveAttribute('aria-hidden', 'true');
+    fireEvent.click(screen.getByRole('button', { name: 'Open mods folder' }));
+    expect(await screen.findByRole('alert')).toBeVisible();
+    expect(named('open_instance_folder', calls)[0]?.args).toMatchObject({
+      request: { payload: { instanceId: fabric.id, folder: 'mods' } },
     });
   });
 
@@ -1285,11 +1507,18 @@ describe('ModsView', () => {
         },
         'installed',
       );
-      expect(await screen.findByText('Made from the modpack Pack 1.0')).toBeVisible();
+      expect(
+        await screen.findByText('Made from the modpack \u2068Pack\u2069 \u20681.0\u2069'),
+      ).toBeVisible();
       expect(screen.getByText('From the modpack')).toBeVisible();
       fireEvent.click(screen.getByRole('button', { name: 'Check for updates' }));
-      fireEvent.click(await screen.findByRole('button', { name: 'Update the modpack to 1.1' }));
-      expect(screen.queryByText('Update: 0.6.1')).toBeNull();
+      fireEvent.click(
+        await screen.findByRole('button', { name: 'Update the modpack to \u20681.1\u2069' }),
+      );
+      expect(screen.queryByText('Update: \u20680.6.1\u2069')).toBeNull();
+      // The modpack's offer is said once, and nothing claims the rest is up to date.
+      expect(screen.getByText('The modpack has a newer version, \u20681.1\u2069.')).toBeVisible();
+      expect(screen.queryByText(/up to date/)).toBeNull();
       expect(named('mods_versions', calls)[0]?.args).toMatchObject({
         project: PROJECT,
         game: fabric.versionId,
@@ -2277,7 +2506,9 @@ describe('Project page', () => {
     };
     setup({ mods_versions: () => [version, older] });
     const article = await openSodium();
-    expect(await within(article).findByText('In “⁨Modded⁩”: version ⁨0.6.0⁩.')).toBeVisible();
+    expect(
+      await within(article).findByText('In “\u2068Modded\u2069”: version \u20680.6.0\u2069.'),
+    ).toBeVisible();
     expect(within(article).queryByRole('button', { name: /to installation$/ })).toBeNull();
     const row = (await within(article).findByRole('rowheader', { name: /0\.6\.0/ })).closest('tr');
     expect(within(row as HTMLElement).getByText('Installed')).toBeVisible();
@@ -2295,7 +2526,9 @@ describe('Project page', () => {
       mods_content: () => ({ ...NOTHING, items: [file(PROJECT, 'v-old', 'mods/sodium-0.5.jar')] }),
     });
     const article = await openSodium();
-    fireEvent.click(await within(article).findByRole('button', { name: 'Update to ⁨0.6.0⁩' }));
+    fireEvent.click(
+      await within(article).findByRole('button', { name: 'Update to \u20680.6.0\u2069' }),
+    );
     expect(await screen.findByRole('dialog', { name: 'Add Sodium to Modded' })).toBeVisible();
     await waitFor(() => {
       expect(named('mods_plan', calls)).toHaveLength(1);
@@ -2330,9 +2563,11 @@ describe('Project page', () => {
     );
     fireEvent.change(select, { target: { value: fabric.id } });
     expect(
-      await within(article).findByRole('button', { name: 'Add ⁨0.6.0⁩ to installation' }),
+      await within(article).findByRole('button', { name: 'Add \u20680.6.0\u2069 to installation' }),
     ).toBeEnabled();
-    expect(within(article).getByRole('switch', { name: 'Only for “⁨Modded⁩”' })).toBeVisible();
+    expect(
+      within(article).getByRole('switch', { name: 'Only for “\u2068Modded\u2069”' }),
+    ).toBeVisible();
   });
 
   it('lists what a version depends on, and adds or opens those projects', async () => {
@@ -2395,7 +2630,9 @@ describe('Project page', () => {
     // Only the catalog's own pictures are drawn: Indium's icon is a letter.
     expect(document.querySelector('img[src^="https://tracker.example"]')).toBeNull();
 
-    fireEvent.click(within(deps).getByRole('button', { name: 'Add ⁨continuity⁩ to the catalog' }));
+    fireEvent.click(
+      within(deps).getByRole('button', { name: 'Add \u2068continuity\u2069 to the catalog' }),
+    );
     const asked = await screen.findByRole('dialog', { name: 'Add to the catalog' });
     expect(within(asked).getByRole('textbox')).toHaveValue(
       'https://modrinth.com/project/continuity',
@@ -2690,7 +2927,9 @@ describe('Project page', () => {
     const calls = setup({ ...fresh, mods_versions: () => [version, pack] }, 'datapack');
     const article = await openSodium();
     expect(
-      await within(article).findByRole('button', { name: 'Add ⁨2.0-dp⁩ to installation' }),
+      await within(article).findByRole('button', {
+        name: 'Add \u20682.0-dp\u2069 to installation',
+      }),
     ).toBeEnabled();
     const loaders = await within(article).findByRole('group', { name: 'Loader' });
     expect(within(loaders).getByRole('button', { name: 'Data pack' })).toHaveAttribute(
@@ -2734,7 +2973,9 @@ describe('Project page', () => {
     });
     const article = await openSodium();
     // Add takes the newest release; the newer beta stays.
-    expect(await within(article).findByText('In “⁨Modded⁩”: version ⁨0.7.0-beta⁩.')).toBeVisible();
+    expect(
+      await within(article).findByText('In “\u2068Modded\u2069”: version \u20680.7.0-beta\u2069.'),
+    ).toBeVisible();
     expect(within(article).queryByRole('button', { name: /^Update to/ })).toBeNull();
   });
 
@@ -2794,7 +3035,9 @@ describe('Project page', () => {
     // The default installation holds 0.6.0 for Fabric.
     setup({ mods_versions: () => [neo, own] });
     const article = await openSodium();
-    expect(await within(article).findByText('In “⁨Modded⁩”: version ⁨0.6.0⁩.')).toBeVisible();
+    expect(
+      await within(article).findByText('In “\u2068Modded\u2069”: version \u20680.6.0\u2069.'),
+    ).toBeVisible();
     const deps = await within(article).findByRole('region', { name: 'Dependencies' });
     expect(within(deps).getByText('For version ⁨0.6.0⁩')).toBeVisible();
     // Nothing is added now: it is only "Required".
@@ -2963,7 +3206,9 @@ describe('Project page', () => {
       }),
     });
     const article = await openSodium();
-    fireEvent.click(await within(article).findByRole('button', { name: 'What’s new in ⁨0.6.0⁩' }));
+    fireEvent.click(
+      await within(article).findByRole('button', { name: 'What’s new in \u20680.6.0\u2069' }),
+    );
     const details = await screen.findByRole('dialog', { name: 'What’s new in ⁨0.6.0⁩' });
     fireEvent.click(await within(details).findByRole('link', { name: 'notes' }));
     const confirm = await screen.findByRole('dialog', { name: 'Open this link?' });
@@ -2989,8 +3234,12 @@ describe('Project page', () => {
     setup({ ...fresh, mods_versions: () => [{ ...version, games: ['1.20.1'] }] });
     const article = await openSodium();
     const versions = await within(article).findByRole('region', { name: 'Versions' });
-    fireEvent.click(await within(versions).findByRole('switch', { name: 'Only for “⁨Modded⁩”' }));
-    expect(await within(versions).findByText('No version here fits “⁨Modded⁩”.')).toBeVisible();
+    fireEvent.click(
+      await within(versions).findByRole('switch', { name: 'Only for “\u2068Modded\u2069”' }),
+    );
+    expect(
+      await within(versions).findByText('No version here fits “\u2068Modded\u2069”.'),
+    ).toBeVisible();
     fireEvent.change(screen.getByLabelText('Installation'), { target: { value: '' } });
     expect(await within(article).findByRole('rowheader', { name: /0\.6\.0/ })).toBeVisible();
     expect(within(article).queryByText(/No version here fits/)).toBeNull();
@@ -3027,7 +3276,9 @@ describe('Project page', () => {
     );
     const article = await openSodium();
     expect(
-      await within(article).findByRole('button', { name: 'Add ⁨2.0-dp⁩ to installation' }),
+      await within(article).findByRole('button', {
+        name: 'Add \u20682.0-dp\u2069 to installation',
+      }),
     ).toBeEnabled();
     expect(within(article).queryByText(/^In “⁨Modded⁩”/)).toBeNull();
     const deps = await within(article).findByRole('region', { name: 'Dependencies' });
@@ -3127,7 +3378,9 @@ describe('Project page', () => {
         }),
     });
     const article = await openSodium();
-    const add = await within(article).findByRole('button', { name: 'Add ⁨0.6.0⁩ to installation' });
+    const add = await within(article).findByRole('button', {
+      name: 'Add \u20680.6.0\u2069 to installation',
+    });
     add.focus();
     fireEvent.click(add);
     const dialog = await screen.findByRole('dialog', { name: 'Add Sodium to Modded' });

@@ -3233,6 +3233,15 @@ skins-mod <channel>` there only checks the signature against the public key and
   Installations keeps the same forms (D-036, D-044 and the loader hint still hold), and
   the Java of an installation stays three choices (D-044). Fullscreen and launcher skins
   stay boxes, not switches, as they apply with Save.
+- **Installed tab:** the modpack card, a toolbar whose end says what the last check or
+  Update all found, and each folder's files as rows in a panel, their switches and
+  buttons lined up. The screen keeps My requests and Add to the catalog at the top and the
+  catalog's icon tabs (the board's text tabs and requests tab are not taken), the longer
+  button names that say what they do (Open mods folder, In the catalog, Remove), and each
+  file's size and world. A file's source and the set's dependency problems on the tab
+  wait for data from the mods thread. A question (turn off a needed mod, remove a file)
+  opens in place under its row; Cancel always closes it, and the focus goes back to what
+  asked.
 - **Order:** tokens and shell, then Installations and the launch bar, the new
   installation form, the feed, the catalog, the mod page and the remaining screens, each
   in its own pull request. Features the new screens need from a service go to the thread

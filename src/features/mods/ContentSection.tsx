@@ -1,8 +1,13 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useId, useRef, useState } from 'react';
 import { Button } from '../../components/Button';
+import { Choice } from '../../components/Choice';
+import { Confirm } from '../../components/Confirm';
+import { Icon } from '../../components/Icon';
 import { Notice } from '../../components/Notice';
-import { StatusBadge } from '../../components/StatusBadge';
-import forms from '../../components/forms.module.css';
+import { Panel } from '../../components/Panel';
+import { Switch } from '../../components/Switch';
+import { Tag } from '../../components/Tag';
+import { useFocusBack } from '../../components/useFocusBack';
 import type {
   ContentIdentified,
   ContentItem,
@@ -15,13 +20,19 @@ import type {
 import { formatBytes } from '../../lib/format';
 import { describeIpcError, ipc } from '../../lib/ipc';
 import { strings } from '../../lib/strings';
+import { useCommand } from '../../lib/useCommand';
+import { ProjectIcon } from './CatalogTile';
 import { ExportDialog } from './ExportDialog';
 import { PublishDialog } from './PublishDialog';
-import { ourPicture, packArchive } from './helpers';
+import { isolate, packArchive } from './helpers';
 import { PackDialog } from './PackDialog';
+import catalog from './Catalog.module.css';
 import styles from './Mods.module.css';
 
 const FOLDERS = ['mods', 'resourcepacks', 'shaderpacks', 'datapacks'] as const;
+
+/** A file's row stays while it is turned off or on (its path gains or loses ".disabled"). */
+const rowName = (item: ContentItem) => JSON.stringify([item.world, item.folder, item.name]);
 
 /** Where an update stands while "Update all" runs. */
 interface Batch {
@@ -43,7 +54,8 @@ function Row({
   item,
   update,
   known,
-  busy,
+  waiting,
+  pending,
   onCheck,
   onToggle,
   onRemove,
@@ -53,21 +65,34 @@ function Row({
   item: ContentItem;
   update: ContentUpdate | undefined;
   known: ContentIdentified | undefined;
-  busy: boolean;
+  /** Something else holds the installation (the game runs, it installs): nothing changes. */
+  waiting: boolean;
+  /** A change on this tab goes: the controls wait for it but keep the focus. */
+  pending: boolean;
   /** Which mods need this one, before it is turned off or removed. */
   onCheck: () => Promise<ModsNeededBy | null>;
   onToggle: () => void;
   /** Removes the file, and these files with it. */
   onRemove: (also: string[]) => void;
   onOpen: (projectId: string) => void;
-  onUpdate: () => void;
+  /** Opens the newer version, named as the row names the file. */
+  onUpdate: (title: string) => void;
 }) {
   const t = strings.mods.content;
   // Asking before turning a mod off (when others need it) or removing a file.
   const [asking, setAsking] = useState<'off' | 'remove' | null>(null);
+  // What asked last: the focus goes back to it when the question closes.
+  const [askedBy, setAskedBy] = useState<'off' | 'remove'>('remove');
   const [needs, setNeeds] = useState<ModsNeededBy | null>(null);
   const [checkingNeeds, setCheckingNeeds] = useState(false);
   const [alsoUnused, setAlsoUnused] = useState(true);
+  const titleId = useId();
+  const switchInput = useRef<HTMLInputElement>(null);
+  const removeButton = useRef<HTMLButtonElement>(null);
+  useFocusBack(
+    asking,
+    ...(askedBy === 'off' ? [switchInput, removeButton] : [removeButton, switchInput]),
+  );
   const isMod = item.folder === 'mods' && !item.directory;
   const ask = (then: (found: ModsNeededBy | null) => void) => {
     if (!isMod) {
@@ -92,6 +117,7 @@ function Row({
         onToggle();
       } else {
         setNeeds(found);
+        setAskedBy('off');
         setAsking('off');
       }
     });
@@ -105,122 +131,138 @@ function Row({
     asking === 'remove' && needs !== null && needs.unused.length > 0 ? needs.unused : null;
   // A file the launcher did not install (a modpack's, the player's) is
   // named as the catalog shows it.
-  const icon = ourPicture(item.icon ?? known?.icon ?? null);
   const title = item.title ?? known?.title ?? item.name;
   const versionNumber = item.versionNumber ?? known?.versionNumber ?? null;
   const project = item.projectId ?? known?.projectId ?? null;
   return (
-    <li className={styles.contentRow}>
-      {icon !== null ? (
-        <img className={styles.icon} src={icon} alt="" loading="lazy" />
-      ) : (
-        <span className={styles.icon} aria-hidden="true" />
-      )}
-      <span className={styles.cardBody}>
-        <span className={styles.cardTitle}>
-          <bdi>{title}</bdi>
-          {versionNumber !== null && (
-            <span className={styles.muted}>
-              <bdi>{versionNumber}</bdi>
-            </span>
-          )}
-          {!item.enabled && <StatusBadge tone="neutral" label={t.off} />}
-          {item.dependency && <StatusBadge tone="neutral" label={t.dependency} />}
-          {item.fromPack ? (
-            <StatusBadge tone="neutral" label={t.fromPack} />
-          ) : (
-            item.projectId === null && <StatusBadge tone="neutral" label={t.byHand} />
-          )}
-          {update !== undefined && (
-            <StatusBadge tone="warning" label={t.updateTo({ version: update.toNumber })} />
-          )}
-        </span>
-        <span className={styles.muted}>
-          <bdi dir="ltr">{item.path}</bdi>
-          {!item.directory && ` · ${formatBytes(item.size)}`}
-          {item.world !== null && ` · ${t.inWorld({ world: item.world })}`}
-        </span>
-      </span>
-      <span className={styles.rowActions}>
-        {!item.directory && (
-          <label className={styles.check}>
-            <input
-              type="checkbox"
-              checked={item.enabled}
-              disabled={busy || checkingNeeds || asking !== null}
-              onChange={toggle}
-              aria-label={t.toggle({ name: title })}
-            />
-            {t.on}
-          </label>
+    <li className={styles.item}>
+      <ProjectIcon
+        hit={{ icon: item.icon ?? known?.icon ?? null, title, slug: item.name }}
+        className={styles.itemIcon}
+      />
+      <span className={styles.itemName}>
+        <bdi id={titleId}>{title}</bdi>
+        {versionNumber !== null && (
+          <span className={styles.itemVersion}>
+            <bdi>{versionNumber}</bdi>
+          </span>
         )}
+        {!item.enabled && <Tag>{t.off}</Tag>}
+        {item.dependency && <Tag>{t.dependency}</Tag>}
+        {item.fromPack ? <Tag>{t.fromPack}</Tag> : item.projectId === null && <Tag>{t.byHand}</Tag>}
         {update !== undefined && (
-          <Button variant="primary" disabled={busy} onClick={onUpdate}>
-            {t.update}
-          </Button>
+          <Tag tone="warning">{t.updateTo({ version: isolate(update.toNumber) })}</Tag>
         )}
-        {project !== null && (
-          <Button
-            onClick={() => {
-              onOpen(project);
-            }}
-          >
-            {t.open}
-          </Button>
+      </span>
+      <span className={styles.itemMeta}>
+        <bdi dir="ltr">{item.path}</bdi>
+        {/* "1.3 MiB" stays whole in Arabic. */}
+        {!item.directory && ` · ${isolate(formatBytes(item.size))}`}
+        {item.world !== null && ` · ${t.inWorld({ world: isolate(item.world) })}`}
+      </span>
+      {/* The buttons repeat in every row: each is described by its row's name. */}
+      <span className={styles.itemControls}>
+        {!item.directory && (
+          <Switch
+            className={styles.itemSwitch}
+            inputRef={switchInput}
+            checked={item.enabled}
+            disabled={waiting}
+            pending={pending || checkingNeeds || asking !== null}
+            onChange={toggle}
+            label={
+              <>
+                <span className={catalog.visuallyHidden}>{t.toggle({ name: isolate(title) })}</span>
+                <span aria-hidden="true">{t.on}</span>
+              </>
+            }
+          />
         )}
-        {!item.directory && asking === null && (
-          <Button
-            disabled={busy || checkingNeeds}
-            onClick={() => {
-              ask((found) => {
-                setNeeds(found);
-                setAlsoUnused(true);
-                setAsking('remove');
-              });
-            }}
-          >
-            {t.remove}
-          </Button>
-        )}
+        <span className={styles.itemActions}>
+          {update !== undefined && (
+            <Button
+              size="small"
+              aria-describedby={titleId}
+              disabled={waiting}
+              aria-disabled={pending || undefined}
+              onClick={() => {
+                if (!pending) onUpdate(title);
+              }}
+            >
+              {t.update}
+            </Button>
+          )}
+          {project !== null && (
+            <Button
+              size="small"
+              aria-describedby={titleId}
+              onClick={() => {
+                onOpen(project);
+              }}
+            >
+              {t.open}
+            </Button>
+          )}
+          {!item.directory && asking === null && (
+            <Button
+              ref={removeButton}
+              size="small"
+              aria-describedby={titleId}
+              disabled={waiting}
+              aria-disabled={pending || checkingNeeds || undefined}
+              onClick={() => {
+                if (pending || checkingNeeds) return;
+                ask((found) => {
+                  setNeeds(found);
+                  setAlsoUnused(true);
+                  setAskedBy('remove');
+                  setAsking('remove');
+                });
+              }}
+            >
+              {t.remove}
+            </Button>
+          )}
+        </span>
       </span>
       {checkingNeeds && (
-        <p role="status" className={[styles.muted, styles.rowAsk].join(' ')}>
+        <p role="status" className={styles.itemWide}>
           {t.checkingNeeds}
         </p>
       )}
       {asking !== null && (
-        <div className={styles.rowAsk}>
-          {neededBy !== null && (
-            <Notice tone="warning">{t.neededBy({ names: neededBy.join(', ') })}</Notice>
-          )}
-          {unused !== null && (
-            <label className={styles.check}>
-              <input
+        <div className={styles.itemWide}>
+          <Confirm
+            label={title}
+            action={asking === 'off' ? t.turnOffAnyway : t.confirmRemove}
+            actionVariant={asking === 'off' ? 'primary' : 'danger'}
+            cancel={t.cancel}
+            // The answer closes the question at once; while something else runs it
+            // waits, and Cancel still closes.
+            pending={false}
+            held={waiting || pending}
+            onYes={() => {
+              const also = unused !== null && alsoUnused ? unused.map((u) => u.path) : [];
+              const wanted = asking;
+              stopAsking();
+              if (wanted === 'off') onToggle();
+              else onRemove(also);
+            }}
+            onNo={stopAsking}
+          >
+            {asking === 'remove' && <p>{t.removeQuestion({ name: isolate(title) })}</p>}
+            {neededBy !== null && <p>{t.neededBy({ names: neededBy.map(isolate).join(', ') })}</p>}
+            {unused !== null && (
+              <Choice
                 type="checkbox"
                 checked={alsoUnused}
+                title={t.alsoRemove({ names: unused.map((u) => isolate(u.title)).join(', ') })}
                 onChange={(event) => {
                   setAlsoUnused(event.target.checked);
                 }}
               />
-              {t.alsoRemove({ names: unused.map((u) => u.title).join(', ') })}
-            </label>
-          )}
-          <span className={styles.rowActions}>
-            <Button
-              variant="primary"
-              disabled={busy}
-              onClick={() => {
-                const also = unused !== null && alsoUnused ? unused.map((u) => u.path) : [];
-                const wanted = asking;
-                stopAsking();
-                if (wanted === 'off') onToggle();
-                else onRemove(also);
-              }}
-            >
-              {asking === 'off' ? t.turnOffAnyway : t.confirmRemove}
-            </Button>
-            <Button onClick={stopAsking}>{t.cancel}</Button>
-          </span>
+            )}
+          </Confirm>
         </div>
       )}
     </li>
@@ -259,34 +301,58 @@ export function ContentSection({ instance, onOpen, onUpdate, revision }: Props) 
   const [publishing, setPublishing] = useState(false);
   // Files the catalog has since marked as malware (D-066, stage 6).
   const [harmful, setHarmful] = useState<string[]>([]);
+  const folder = useCommand((requestId: string) => ipc.openInstanceFolder(id, requestId, 'mods'));
+  const checkButton = useRef<HTMLButtonElement>(null);
+  const root = useRef<HTMLDivElement>(null);
+  // Counts the lists read again after a change made from this tab: a row or a warning
+  // that had the focus may have gone with them.
+  const [landed, setLanded] = useState(0);
   const pack = view?.pack ?? null;
 
-  const load = useCallback(() => {
-    void ipc
-      .modsContent(id)
-      .then(setView)
-      .catch((e: unknown) => {
-        setError(describeIpcError(e));
-      });
-    // Offline or unanswered: nothing to warn about yet.
-    void ipc
-      .modsHarmful(id)
-      .then(setHarmful)
-      .catch(() => undefined);
-    // Offline or unanswered: the files keep their names.
-    void ipc
-      .modsIdentify(id)
-      .then((known) => {
-        setNamed({ id, known });
-      })
-      .catch(() => undefined);
-  }, [id]);
+  const load = useCallback(
+    (refocus = false) => {
+      const arrived = () => {
+        if (refocus) setLanded((n) => n + 1);
+      };
+      void ipc
+        .modsContent(id)
+        .then((found) => {
+          setView(found);
+          arrived();
+        })
+        .catch((e: unknown) => {
+          setError(describeIpcError(e));
+        });
+      // Offline or unanswered: nothing to warn about yet.
+      void ipc
+        .modsHarmful(id)
+        .then((found) => {
+          setHarmful(found);
+          arrived();
+        })
+        .catch(() => undefined);
+      // Offline or unanswered: the files keep their names.
+      void ipc
+        .modsIdentify(id)
+        .then((known) => {
+          setNamed({ id, known });
+        })
+        .catch(() => undefined);
+    },
+    [id],
+  );
 
-  useEffect(load, [load, revision]);
+  useEffect(() => {
+    load();
+  }, [load, revision]);
 
   const change = (action: Promise<void>) => {
+    // Only a change pressed from here hands the focus on after it (a mouse press in
+    // WebKit leaves the focus on the page: it is not moved, nor the page scrolled).
+    const fromHere = root.current?.contains(document.activeElement) === true;
     setWorking(true);
     setError(null);
+    setBatch(null);
     action
       .then(() => {
         // Paths change when a file is turned off; check again for offers.
@@ -297,7 +363,7 @@ export function ContentSection({ instance, onOpen, onUpdate, revision }: Props) 
       })
       .finally(() => {
         setWorking(false);
-        load();
+        load(fromHere);
       });
   };
 
@@ -361,17 +427,56 @@ export function ContentSection({ instance, onOpen, onUpdate, revision }: Props) 
       }
       setBatch({ done: index + 1, total: offers.length, failed });
     }
+    // The offers were for the files as they were: the check after it says what is left.
+    setChecked(null);
     load();
     check();
   };
 
-  const busy = instance.busy || working || (batch !== null && batch.done < batch.total);
+  const updatingAll = batch !== null && batch.done < batch.total;
+  // Something else holds the installation (the game runs, it installs): nothing here
+  // changes, and the controls say so. A change made here holds them too, but they keep
+  // the focus while it goes.
+  const waiting = instance.busy;
+  const own = working || updatingAll;
   const items = view?.items ?? [];
   const byPath = new Map((updates ?? []).map((u) => [u.path, u]));
   const knownByPath = new Map(known.map((k) => [k.path, k]));
-  const packIcon = ourPicture(pack?.icon ?? null);
+  // One line at the toolbar's end says what the last check or "Update all" found. It
+  // stays the same element, so each new answer is read out.
+  const batchText =
+    batch === null
+      ? null
+      : updatingAll
+        ? t.updating({ done: batch.done, total: batch.total })
+        : batch.failed > 0
+          ? t.updatedSome({ failed: batch.failed })
+          : t.updatedAll;
+  const offersText =
+    updates === null || updatingAll || checking
+      ? null
+      : [
+          updates.length > 0
+            ? t.updatesFound({ count: updates.length })
+            : packOffer === null
+              ? t.upToDate
+              : null,
+          packOffer !== null ? t.packOffered({ version: isolate(packOffer.number) }) : null,
+        ]
+          .filter((part) => part !== null)
+          .join(' ');
+  const status = [batchText, offersText].filter((part) => part !== null && part !== '').join(' ');
+  // What had the focus went (a removed row or warning, Update all once nothing is left
+  // to update): it goes to Check for updates.
+  useFocusBack(landed, checkButton);
+  useFocusBack(updates, checkButton);
+  const rowNames = new Map<string, number>();
+  for (const item of items) rowNames.set(rowName(item), (rowNames.get(rowName(item)) ?? 0) + 1);
+  // Two files that share a name (one of them put there by hand) keep their own rows.
+  const rowKey = (item: ContentItem) =>
+    (rowNames.get(rowName(item)) ?? 0) > 1 ? item.path : rowName(item);
   return (
-    <div className={styles.section}>
+    <div ref={root} className={styles.installed}>
       {instance.busy && <Notice tone="info">{t.busy}</Notice>}
       {error !== null && <Notice tone="danger">{error}</Notice>}
       {harmful.length > 0 && (
@@ -387,9 +492,11 @@ export function ContentSection({ instance, onOpen, onUpdate, revision }: Props) 
                   <bdi dir="ltr">{path}</bdi>
                 </span>
                 <Button
-                  disabled={busy}
+                  size="small"
+                  disabled={waiting}
+                  aria-disabled={own || undefined}
                   onClick={() => {
-                    change(ipc.modsRemove(id, path));
+                    if (!own) change(ipc.modsRemove(id, path));
                   }}
                 >
                   {t.remove}
@@ -400,33 +507,38 @@ export function ContentSection({ instance, onOpen, onUpdate, revision }: Props) 
         </Notice>
       )}
       {pack !== null && (
-        <div className={styles.contentRow}>
-          {packIcon !== null ? (
-            <img className={styles.icon} src={packIcon} alt="" />
-          ) : (
-            <span className={styles.icon} aria-hidden="true" />
-          )}
-          <span className={styles.cardBody}>
-            <span className={styles.cardTitle}>
-              {t.pack({ title: pack.title, version: pack.versionNumber })}
+        <div className={styles.packCard}>
+          <ProjectIcon
+            hit={{ icon: pack.icon, title: pack.title, slug: pack.title }}
+            className={styles.packIcon}
+          />
+          <span className={styles.itemName}>
+            <span>
+              {t.pack({ title: isolate(pack.title), version: isolate(pack.versionNumber) })}
             </span>
-            {updates !== null && packOffer === null && (
-              <span className={styles.muted}>{t.packLatest}</span>
+            {packOffer !== null && (
+              <Tag tone="warning">{t.updateTo({ version: isolate(packOffer.number) })}</Tag>
             )}
           </span>
-          <span className={styles.rowActions}>
+          <span className={styles.itemMeta}>
+            {t.packHint}
+            {updates !== null && packOffer === null && ` ${t.packLatest}`}
+          </span>
+          <span className={styles.itemActions}>
             {packOffer !== null && (
               <Button
-                variant="primary"
-                disabled={busy}
+                size="small"
+                disabled={waiting}
+                aria-disabled={own || undefined}
                 onClick={() => {
-                  setUpdatingPack(packOffer);
+                  if (!own) setUpdatingPack(packOffer);
                 }}
               >
-                {t.packUpdate({ version: packOffer.number })}
+                {t.packUpdate({ version: isolate(packOffer.number) })}
               </Button>
             )}
             <Button
+              size="small"
               onClick={() => {
                 onOpen(pack.projectId);
               }}
@@ -436,80 +548,88 @@ export function ContentSection({ instance, onOpen, onUpdate, revision }: Props) 
           </span>
         </div>
       )}
-      <div className={forms.actions}>
-        <Button disabled={checking || busy} onClick={check}>
+      <div className={styles.toolbar}>
+        <Button
+          ref={checkButton}
+          size="small"
+          disabled={waiting}
+          aria-disabled={checking || own || undefined}
+          onClick={() => {
+            if (checking || own) return;
+            setBatch(null);
+            check();
+          }}
+        >
+          <Icon name="refresh" size={18} />
           {checking ? t.checking : t.check}
         </Button>
         {updates !== null && updates.length > 1 && (
           <Button
             variant="primary"
-            disabled={busy}
+            size="small"
+            disabled={waiting}
+            aria-disabled={own || checking || undefined}
             onClick={() => {
-              void updateAll(updates);
+              if (!own && !checking) void updateAll(updates);
             }}
           >
             {t.updateAll({ count: updates.length })}
           </Button>
         )}
         <Button
+          size="small"
+          aria-disabled={folder.pending || undefined}
           onClick={() => {
-            void ipc.openInstanceFolder(id, undefined, 'mods').catch(() => undefined);
+            if (!folder.pending) void folder.run();
           }}
         >
+          <Icon name="folder" size={18} />
           {t.openFolder}
         </Button>
         <Button
-          disabled={busy}
+          size="small"
+          disabled={waiting}
+          aria-disabled={own || undefined}
           onClick={() => {
-            setExporting(true);
+            if (!own) setExporting(true);
           }}
         >
           {t.export}
         </Button>
         <Button
-          disabled={busy}
+          size="small"
+          disabled={waiting}
+          aria-disabled={own || undefined}
           onClick={() => {
-            setPublishing(true);
+            if (!own) setPublishing(true);
           }}
         >
           {t.publish}
         </Button>
+        <p role="status" className={styles.toolbarStatus}>
+          {status}
+        </p>
       </div>
-      {updates !== null && updates.length === 0 && (
-        <p className={styles.muted} role="status">
-          {t.upToDate}
-        </p>
-      )}
-      {batch !== null && (
-        <p role="status" className={styles.muted}>
-          {batch.done < batch.total
-            ? t.updating({ done: batch.done, total: batch.total })
-            : batch.failed > 0
-              ? t.updatedSome({ failed: batch.failed })
-              : t.updatedAll}
-        </p>
-      )}
+      {folder.error !== null && <Notice tone="danger">{folder.error}</Notice>}
       {view === null ? (
         error === null && <p role="status">{strings.mods.loading}</p>
       ) : items.length === 0 ? (
         <p className={styles.muted}>{t.empty}</p>
       ) : (
-        FOLDERS.map((folder) => {
-          const inFolder = items.filter((i) => i.folder === folder);
+        FOLDERS.map((group) => {
+          const inFolder = items.filter((i) => i.folder === group);
           if (inFolder.length === 0) return null;
           return (
-            <section key={folder} aria-label={t.folders[folder]}>
-              <h3 className={styles.subTitle}>
-                {t.folders[folder]} <span className={styles.muted}>{inFolder.length}</span>
-              </h3>
-              <ul className={styles.contentList}>
+            <Panel key={group} title={t.folders[group]} level={3} count={inFolder.length}>
+              <ul className={styles.items}>
                 {inFolder.map((item) => (
                   <Row
-                    key={item.path}
+                    key={rowKey(item)}
                     item={item}
                     update={byPath.get(item.path)}
                     known={knownByPath.get(item.path)}
-                    busy={busy}
+                    waiting={waiting}
+                    pending={own}
                     onOpen={onOpen}
                     onCheck={() => ipc.modsNeededBy(id, item.path)}
                     onToggle={() => {
@@ -523,14 +643,14 @@ export function ContentSection({ instance, onOpen, onUpdate, revision }: Props) 
                         })(),
                       );
                     }}
-                    onUpdate={() => {
+                    onUpdate={(title) => {
                       const offer = byPath.get(item.path);
-                      if (offer !== undefined) onUpdate(offer, item.title ?? item.name, item.world);
+                      if (offer !== undefined) onUpdate(offer, title, item.world);
                     }}
                   />
                 ))}
               </ul>
-            </section>
+            </Panel>
           );
         })
       )}
