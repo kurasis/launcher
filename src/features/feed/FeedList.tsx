@@ -70,6 +70,8 @@ const t = strings.feed;
 
 /** How far below the screen the next page is asked for. */
 const AHEAD = '800px';
+/** As many cards of the core's feed as a first page has: shown while it comes. */
+const PREVIEW = 20;
 /** A list shown again within this is not asked for its first page again. */
 const FRESH_MS = 60_000;
 /** How long new cards are marked as new (their animation and its glow). */
@@ -534,7 +536,11 @@ export function FeedList({
 }: FeedListProps) {
   // Kept from an earlier visit in this run: shown at once, looked at again below.
   const [place] = useState(() => (memoryKey === undefined ? null : recallList(memoryKey)));
-  const [pages, setPages] = useState<FeedItem[]>(place?.pages ?? []);
+  // A new list shows the feed the core has at once (its first cards), and the
+  // first page takes their place when it comes.
+  const [pages, setPages] = useState<FeedItem[]>(
+    () => place?.pages ?? keptItems(feed, settings, filter).slice(0, PREVIEW),
+  );
   const [next, setNext] = useState<string | null>(place?.next ?? null);
   const [loading, setLoading] = useState<Loading>(place === null ? 'first' : 'idle');
   /** The pages could not be fetched: the feed the core has is shown. */
@@ -677,7 +683,10 @@ export function FeedList({
       .feedPage(part, null, shortsOnly)
       .then((page) => {
         if (!alive.current) return;
-        setPages(page.items);
+        // The cards the page has stay where they are; the others come in.
+        const shown = latest.current.pages;
+        if (shown.length === 0) setPages(page.items);
+        else arrive(page.items, newKeys(shown, page.items));
         setNext(page.next);
         setLoading('idle');
       })
@@ -690,7 +699,7 @@ export function FeedList({
     return () => {
       alive.current = false;
     };
-  }, [place, part, filter, shortsOnly, freshen]);
+  }, [place, part, filter, shortsOnly, freshen, arrive]);
 
   // Every few minutes while the list is shown: a fresh look, so new cards come
   // in, live streams are updated and ended ones leave.
@@ -758,7 +767,7 @@ export function FeedList({
       pages,
       videosShown(own),
       streamsWanted ? ownStreams : [],
-      next !== null && !kept,
+      (next !== null || loading === 'first') && !kept,
       featured?.note?.id ?? null,
     ),
     favoriteItems,
@@ -780,9 +789,14 @@ export function FeedList({
           ? t.nothing
           : t.noArticles;
 
-  if (loading === 'first') return <FeedLoading />;
+  if (loading === 'first' && pages.length === 0) return <FeedLoading />;
   const cards = (entries.length > 0 || featured !== null) && (
-    <Mosaic ref={frame} label={t.filter[filter]} busy={loading === 'more'} glides={glides}>
+    <Mosaic
+      ref={frame}
+      label={t.filter[filter]}
+      busy={loading === 'more' || loading === 'first'}
+      glides={glides}
+    >
       {featured !== null && snapshot !== undefined && (
         <Cell key="featured">
           <VersionCard
@@ -836,7 +850,7 @@ export function FeedList({
         </button>
       )}
       {cards}
-      {items.length === 0 && <p className={styles.muted}>{empty}</p>}
+      {items.length === 0 && loading !== 'first' && <p className={styles.muted}>{empty}</p>}
       <div ref={end} className={styles.listEnd}>
         {loading === 'more' && (
           <p role="status" className={styles.loadingMore}>

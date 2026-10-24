@@ -620,7 +620,9 @@ export const ipc = {
   // The start page feed (D-067). These reject with a FeedProblem string;
   // `feedProblem` reads it.
   /** `refresh` asks the service again even when it answered a moment ago. */
-  feedGet: (refresh = false): Promise<FeedView> => invoke<FeedView>('feed_get', { refresh }),
+  /** `early`: the copy on disk at once when there is one (`FeedView.early`). */
+  feedGet: (refresh = false, early = false): Promise<FeedView> =>
+    invoke<FeedView>('feed_get', { refresh, early }),
   /** The server ads of a place showing now (D-069). */
   feedServerAds: (place: 'feed', refresh = false): Promise<ServerAdsView> =>
     invoke<ServerAdsView>('feed_server_ads', { place, refresh }),

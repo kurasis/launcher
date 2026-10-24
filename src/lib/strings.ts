@@ -149,7 +149,14 @@ function formatter(locale: string, message: string): IntlMessageFormat {
 
 type Values = Record<string, string | number | boolean>;
 
+/**
+ * A text that reads as written: no values, quotes or tags for the formatter, so
+ * it is not made one (making a formatter is what costs).
+ */
+const asWritten = (message: string) => !/[{}'<]/.test(message);
+
 function render(tag: string, catalog: Catalog, message: string, values?: Values): string {
+  if (asWritten(message)) return message;
   const result = formatter(localeOf(tag, catalog), message).format(values);
   return Array.isArray(result) ? result.join('') : String(result);
 }
@@ -178,9 +185,11 @@ const takesValues = new Map<string, boolean>();
 function hasValues(id: string, message: string): boolean {
   let result = takesValues.get(id);
   if (result === undefined) {
-    result = formatter(ENGLISH, message)
-      .getAst()
-      .some((element) => element.type !== TYPE.literal);
+    result =
+      !asWritten(message) &&
+      formatter(ENGLISH, message)
+        .getAst()
+        .some((element) => element.type !== TYPE.literal);
     takesValues.set(id, result);
   }
   return result;

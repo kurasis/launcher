@@ -2120,6 +2120,8 @@ export interface FeedView {
   /** A copy kept on disk is shown: the service did not answer. */
   stale: boolean;
   problem: FeedProblem | null;
+  /** The copy on disk, given before the service was asked: the fresh feed is asked for next. */
+  early: boolean;
 }
 
 /** An ad for a Minecraft server in the feed (D-069), read through the core's rules. */

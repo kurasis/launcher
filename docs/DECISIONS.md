@@ -3025,6 +3025,12 @@ skins-mod <channel>` there only checks the signature against the public key and
   a "N new posts above" pill until the player is back at the top. Refresh never builds
   the list anew; a note says what it found, "nothing new" included. Motion stops under
   `prefers-reduced-motion`.
+- **At once on start (owner request, 2026-10-24):** the first time in a run the core gives
+  the feed kept on disk at once (`feed_get` with `early`, marked `early`), and the
+  interface asks again for the fresh one; the feed's languages are fetched together. A
+  new list shows the first 20 cards of that feed while its first page comes; the page
+  takes their place, its new cards coming in as on a fresh look. No disk copy: the grey
+  cards as before.
 
 ## D-068 — Worlds with Friends
 
