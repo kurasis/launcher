@@ -995,6 +995,35 @@ fn kept_copies_are_read_through_the_same_rules() {
     assert_eq!(cached_note(&root, "../feed-en", Lang::En), None);
 }
 
+#[tokio::test]
+async fn the_early_view_is_the_copy_on_disk_at_once() {
+    let (_dir, root) = root();
+    let languages = Languages {
+        interface: Lang::Ru,
+        notes: Lang::En,
+        videos: Lang::En,
+    };
+    // Without the interface language's copy there is nothing to give early.
+    assert_eq!(early_view(&root, languages), None);
+    let ru = feed(&sample("ru"), Lang::Ru).unwrap();
+    let en = feed(&sample("en"), Lang::En).unwrap();
+    for (lang, read) in [(Lang::Ru, &ru), (Lang::En, &en)] {
+        keep(
+            &feed_file(&root, lang),
+            &serde_json::to_vec(&json!({ "feed": read })).unwrap(),
+        );
+    }
+    let service = FeedService::new("0.0.0").unwrap();
+    // Given before the service is asked (none answers in a test).
+    let view = service
+        .view(Some(&root), languages, false, true)
+        .await
+        .unwrap();
+    assert!(view.early);
+    assert!(!view.stale);
+    assert_eq!(view.feed, compose(ru, Some(en.clone()), Some(en)));
+}
+
 #[test]
 fn caches_drop_their_oldest_files() {
     let dir = tempfile::tempdir().unwrap();

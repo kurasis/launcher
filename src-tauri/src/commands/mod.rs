@@ -3621,13 +3621,18 @@ fn feed_root<R: Runtime>(app: &AppHandle<R>) -> FeedResult<crate::storage::paths
 }
 
 /// The feed in the languages the settings ask for; `refresh` asks the
-/// service again even when it answered a moment ago.
+/// service again even when it answered a moment ago, and `early` takes the
+/// copy on disk at once when there is one (the interface asks again).
 #[tauri::command]
-pub async fn feed_get<R: Runtime>(app: AppHandle<R>, refresh: bool) -> FeedResult<FeedView> {
+pub async fn feed_get<R: Runtime>(
+    app: AppHandle<R>,
+    refresh: bool,
+    early: Option<bool>,
+) -> FeedResult<FeedView> {
     let (languages, _) = feed_languages(&app)?;
     let root = app.state::<AppState>().data_root();
     feed_service(&app)
-        .view(root.as_ref(), languages, refresh)
+        .view(root.as_ref(), languages, refresh, early.unwrap_or(false))
         .await
 }
 

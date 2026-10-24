@@ -215,6 +215,15 @@ function pager(items: FeedItem[] = serviceItems()): Handler {
 }
 
 /** The titles of the list's items, in order. */
+/** The list once its first page is in: the feed's own cards show while it comes. */
+async function listed(name: string) {
+  await screen.findByRole('list', { name });
+  await waitFor(() => {
+    expect(screen.getByRole('list', { name })).not.toHaveAttribute('aria-busy');
+  });
+  return screen.getByRole('list', { name });
+}
+
 function titles(name: string) {
   return within(screen.getByRole('list', { name }))
     .getAllByRole('heading', { level: 3 })
@@ -231,7 +240,7 @@ function backend(overrides: Record<string, Handler> = {}, answer?: FeedAnswer) {
     if (override !== undefined) return override(args);
     switch (cmd) {
       case 'feed_get':
-        return answer ?? { feed: feedFixture(), stale: false, problem: null };
+        return answer ?? { feed: feedFixture(), stale: false, problem: null, early: false };
       case 'feed_own_videos':
       case 'feed_own_streams':
         return [];
@@ -296,7 +305,7 @@ describe('FeedView', () => {
     expect(onInstallVersion).toHaveBeenCalledWith('26.4-snapshot-4');
 
     // Streams, videos and articles in one list, newest first, a page at a time.
-    await screen.findByRole('list', { name: 'All' });
+    await listed('All');
     expect(titles('All')).toEqual([NEWEST, 'Building a castle', 'A long video']);
     const stream = screen.getByRole('button', {
       name: 'Watch Some Streamer live: Building a castle (1,234 viewers)',
@@ -353,7 +362,7 @@ describe('FeedView', () => {
     };
     const calls = backend({ feed_server_ads: () => ({ ads: [ad], stale: false }) });
     show();
-    const list = await screen.findByRole('list', { name: 'All' });
+    const list = await listed('All');
     const tile = await within(list).findByRole('article', { name: 'Ad: Northern Land' });
     // Second, after the newest version.
     expect(tile.closest('[role="listitem"]')).toBe(within(list).getAllByRole('listitem')[1]);
@@ -362,7 +371,7 @@ describe('FeedView', () => {
       refresh: false,
     });
     fireEvent.click(screen.getByRole('button', { name: 'Videos' }));
-    await screen.findByRole('list', { name: 'Videos' });
+    await listed('Videos');
     expect(screen.queryByRole('article', { name: 'Ad: Northern Land' })).toBeNull();
   });
 
@@ -379,7 +388,7 @@ describe('FeedView', () => {
     try {
       const calls = backend();
       show();
-      await screen.findByRole('list', { name: 'All' });
+      await listed('All');
       // No button: the list loads more on its own.
       expect(screen.queryByRole('button', { name: 'Show more' })).toBeNull();
       // The list can start again while the feed settles, leaving an earlier
@@ -423,7 +432,7 @@ describe('FeedView', () => {
   it('loads pictures only from the feed protocol', async () => {
     backend();
     show();
-    await screen.findByRole('list', { name: 'All' });
+    await listed('All');
     const sources = Array.from(document.querySelectorAll('img'), (img) => img.getAttribute('src'));
     expect(sources.length).toBeGreaterThan(0);
     // Previews, upright Shorts and channel pictures: never anything else.
@@ -464,10 +473,10 @@ describe('FeedView', () => {
       'aria-pressed',
       'true',
     );
-    await screen.findByRole('list', { name: 'News' });
+    await listed('News');
     expect(titles('News')).toEqual(['A new mob']);
     fireEvent.click(within(chips).getByRole('button', { name: 'Videos' }));
-    await screen.findByRole('list', { name: 'Videos' });
+    await listed('Videos');
     expect(titles('Videos')).toEqual(['A long video']);
     expect(screen.queryByRole('button', { name: /Some Streamer live/ })).toBeNull();
     expect(
@@ -488,7 +497,7 @@ describe('FeedView', () => {
     show(snapshotWith({ snapshots: false, shorts: true, hidden: ['streams', 'news'] }));
     // Without snapshots, the newest version is the release, first in the list.
     expect(await screen.findByRole('button', { name: 'Install 26.3' })).toBeVisible();
-    await screen.findByRole('list', { name: 'All' });
+    await listed('All');
     expect(titles('All')).toEqual(['Minecraft 26.3', 'A short one', 'A long video']);
     const list = screen.getByRole('list', { name: 'All' });
     expect(within(list).getAllByText('Shorts').length).toBeGreaterThan(0);
@@ -502,7 +511,7 @@ describe('FeedView', () => {
         .map((b) => b.textContent),
     ).toEqual(['All', 'Versions', 'Videos', 'Shorts']);
     fireEvent.click(within(chips).getByRole('button', { name: 'Shorts' }));
-    await screen.findByRole('list', { name: 'Shorts' });
+    await listed('Shorts');
     expect(titles('Shorts')).toEqual(['A short one']);
   });
 
@@ -652,7 +661,7 @@ describe('FeedView', () => {
             : pager()(args),
       });
       show();
-      await screen.findByRole('list', { name: 'All' });
+      await listed('All');
       expect(titles('All')).toEqual([NEWEST, 'Building a castle', 'A long video']);
       // Ended, a stream leaves the mixed list; that list shows only the
       // most watched few, so a new one waits for Refresh there.
@@ -668,7 +677,7 @@ describe('FeedView', () => {
       // Under the Streams chip new ones come in too.
       const chips = screen.getByRole('group', { name: 'Show in the feed' });
       fireEvent.click(within(chips).getByRole('button', { name: 'Streams' }));
-      await screen.findByRole('list', { name: 'Streams' });
+      await listed('Streams');
       expect(titles('Streams')).toEqual(['Hardcore day 1']);
       live = [
         {
@@ -692,7 +701,7 @@ describe('FeedView', () => {
   it('hides a channel from a tile’s menu, and Undo brings it back', async () => {
     const calls = backend();
     show();
-    await screen.findByRole('list', { name: 'All' });
+    await listed('All');
     fireEvent.click(screen.getByRole('button', { name: 'Show more' }));
     fireEvent.click(await screen.findByRole('button', { name: 'More: A long video' }));
     const menu = screen.getByRole('menu');
@@ -736,7 +745,7 @@ describe('FeedView', () => {
       feed_favorites: () => ({ videos: [old], streams: [] }),
     });
     show();
-    await screen.findByRole('list', { name: 'All' });
+    await listed('All');
     await waitFor(() => {
       expect(titles('All')[1]).toBe('An old favourite');
     });
@@ -826,19 +835,61 @@ describe('FeedView', () => {
   });
 
   it('shows the copy kept on disk when offline, and errors in words', async () => {
-    backend({}, { feed: feedFixture(), stale: true, problem: 'offline' });
+    backend({}, { feed: feedFixture(), stale: true, problem: 'offline', early: false });
     show();
     expect(await screen.findByText(/this is the copy from/)).toBeVisible();
     expect(await screen.findByRole('list', { name: 'All' })).toBeVisible();
   });
 
+  it('shows the copy on disk at once, then asks for the fresh feed', async () => {
+    const calls = backend({
+      feed_get: (args) => ({
+        feed: feedFixture(),
+        stale: false,
+        problem: null,
+        early: args.early === true,
+      }),
+    });
+    show();
+    await listed('All');
+    await waitFor(() => {
+      expect(calls.filter((c) => c.cmd === 'feed_get').map((c) => c.args)).toEqual([
+        { refresh: false, early: true },
+        { refresh: false, early: false },
+      ]);
+    });
+  });
+
+  it('shows the feed’s own cards while the first page comes, and the page takes their place', async () => {
+    const waiting: ((page: FeedPage) => void)[] = [];
+    backend({
+      feed_page: () =>
+        new Promise<FeedPage>((resolve) => {
+          waiting.push(resolve);
+        }),
+    });
+    show();
+    const list = await screen.findByRole('list', { name: 'All' });
+    expect(list).toHaveAttribute('aria-busy', 'true');
+    expect(screen.queryByText('Loading the feed…')).toBeNull();
+    expect(titles('All')).toContain('A long video');
+    const fresh = { ...newsCard, id: 'n-fresh-from-the-page', title: 'Fresh from the page' };
+    const page: FeedPage = {
+      items: [{ type: 'note', note: fresh }, ...serviceItems()],
+      next: null,
+    };
+    for (const answer of waiting) answer(page);
+    await listed('All');
+    expect(titles('All')).toContain('Fresh from the page');
+  });
+
   it('comes back as it was left, without loading again', async () => {
     const calls = backend();
     show();
-    await screen.findByRole('list', { name: 'All' });
+    await listed('All');
     const chips = screen.getByRole('group', { name: 'Show in the feed' });
     fireEvent.click(within(chips).getByRole('button', { name: 'Videos' }));
-    await screen.findByRole('list', { name: 'Videos' });
+    await listed('Videos');
     const pages = calls.filter((c) => c.cmd === 'feed_page').length;
     // Another screen, and back: the same chip and cards at once, no grey cards.
     cleanup();
@@ -865,7 +916,7 @@ describe('FeedView', () => {
     let paged = items;
     backend({ feed_page: (args) => pager(paged)(args) });
     show();
-    await screen.findByRole('list', { name: 'All' });
+    await listed('All');
     const refresh = screen.getByRole('button', { name: 'Refresh' });
     fireEvent.click(refresh);
     expect(await screen.findByRole('status')).toHaveTextContent(
@@ -904,7 +955,7 @@ describe('FeedView', () => {
           // eslint-disable-next-line @typescript-eslint/only-throw-error
           throw 'offline';
         }
-        return { feed: feedFixture(), stale: false, problem: null };
+        return { feed: feedFixture(), stale: false, problem: null, early: false };
       },
     });
     show();
@@ -912,7 +963,10 @@ describe('FeedView', () => {
     fail = false;
     fireEvent.click(screen.getByRole('button', { name: 'Refresh' }));
     expect(await screen.findByRole('list', { name: 'All' })).toBeVisible();
-    expect(calls.filter((c) => c.cmd === 'feed_get').at(-1)?.args).toEqual({ refresh: true });
+    expect(calls.filter((c) => c.cmd === 'feed_get').at(-1)?.args).toEqual({
+      refresh: true,
+      early: false,
+    });
   });
 
   it('shows empty parts in words', async () => {
@@ -922,6 +976,7 @@ describe('FeedView', () => {
         feed: feedFixture({ versions: [], news: [], videos: [], streams: [], cycle: null }),
         stale: false,
         problem: null,
+        early: false,
       },
     );
     show(snapshotWith({}, { instances: [] }));
@@ -947,7 +1002,7 @@ describe('FeedView', () => {
       lastPlayedAt: '2026-10-18T12:00:00Z',
     });
     show(snapshotWith({}, { instances: [played] }));
-    await screen.findByRole('list', { name: 'All' });
+    await listed('All');
     expect(screen.queryByRole('region', { name: 'Continue playing' })).toBeNull();
     expect(screen.queryByText(/Creative/)).toBeNull();
     expect(screen.queryByText(/Last played/)).toBeNull();
@@ -973,7 +1028,7 @@ describe('FeedView', () => {
       ],
     });
     show();
-    await screen.findByRole('list', { name: 'All' });
+    await listed('All');
     // It waits until the pages reach its time, so the order holds.
     expect(screen.queryByRole('button', { name: 'Watch “My build” by Mine' })).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Show more' }));
@@ -1002,7 +1057,7 @@ describe('FeedView', () => {
       ],
     });
     show();
-    await screen.findByRole('list', { name: 'All' });
+    await listed('All');
     expect(
       await screen.findByRole('button', { name: 'Watch Ph1LzA live: Hardcore day 1 (50 viewers)' }),
     ).toBeVisible();
@@ -1063,7 +1118,7 @@ describe('FeedView', () => {
     expect(pressed()).toEqual(['All']);
     fireEvent.click(within(pills).getByRole('button', { name: 'Streams' }));
     expect(pressed()).toEqual(['Streams']);
-    await screen.findByRole('list', { name: 'Streams' });
+    await listed('Streams');
     // The newest version leads All only.
     expect(screen.queryByRole('article', { name: NEWEST })).toBeNull();
     // Updates, events and tips show under All only.
@@ -1073,7 +1128,7 @@ describe('FeedView', () => {
   it('keeps the feed’s order in the mosaic: newest version, then each card as it came', async () => {
     backend({ feed_page: pager(serviceItems()) });
     show();
-    const list = await screen.findByRole('list', { name: 'All' });
+    const list = await listed('All');
     fireEvent.click(screen.getByRole('button', { name: 'Show more' }));
     await screen.findByRole('button', { name: 'A new mob' });
     // Each card is a list item of the one list, in the DOM in feed order.
@@ -1106,7 +1161,7 @@ describe('FeedView', () => {
       if (article === null) throw new Error('no card');
       return article;
     };
-    await screen.findByRole('button', { name: /^Watch “A short one”/ });
+    await screen.findByRole('button', { name: /^Watch “No tall one”/ });
     const picture = (title: string) =>
       card(title).querySelector('[style*="aspect-ratio"] > img')?.getAttribute('src');
     expect(picture('A short one')).toBe('feed://localhost/ys/shortshort1.jpg');

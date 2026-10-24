@@ -756,7 +756,7 @@ describe('App', () => {
       snapshotFixture({ settings: settingsWith({ startView: 'feed' }) }),
       appInfoFixture,
       {
-        feed_get: () => ({ feed, stale: false, problem: null }),
+        feed_get: () => ({ feed, stale: false, problem: null, early: false }),
         feed_own_videos: () => [],
         feed_own_streams: () => [],
       },

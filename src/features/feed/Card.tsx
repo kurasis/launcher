@@ -134,6 +134,8 @@ export function Mosaic({
   const watched = useRef(new Set<Element>());
   const spots = useRef(new WeakMap<Element, Spot>());
   const glided = useRef(glides);
+  // The cells and cards laid out last, to tell when they change.
+  const laid = useRef<Element[]>([]);
   useEffect(() => {
     const list = listRef.current;
     if (list === null || typeof ResizeObserver === 'undefined') return;
@@ -160,12 +162,20 @@ export function Mosaic({
       watcher.current = null;
     };
   }, []);
-  // After every render, before it is painted: new cards get their rows at once, and
-  // cards that left the list are no longer watched (the list can run long).
-  // New cards came in first: the others slide from the places noted last time.
+  // After a render that changed the cells, before it is painted: new cards get their
+  // rows at once, and cards that left the list are no longer watched (the list can
+  // run long). New cards came in first: the others slide from the places noted last
+  // time. Renders that kept the same cells measure nothing (measuring makes the
+  // browser lay the page out there and then); a card that grew is seen by the
+  // observer.
   useLayoutEffect(() => {
     const list = listRef.current;
     if (list === null) return;
+    const now = [...Array.from(list.children), ...contents(list)];
+    const before = laid.current;
+    const same = now.length === before.length && now.every((item, index) => item === before[index]);
+    if (same && glided.current === glides) return;
+    laid.current = now;
     layOut(list);
     const observer = watcher.current;
     if (observer !== null) watch(observer, contents(list), watched.current);

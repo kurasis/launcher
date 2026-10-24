@@ -219,13 +219,14 @@ export function FeedView({ snapshot, onOpenInstallations, onInstallVersion }: Fe
   const [refreshes, setRefreshes] = useState(0);
   const [open, setOpen] = useState<NoteCard | null>(null);
   const [actionProblem, setActionProblem] = useState<FeedProblem | null>(null);
-  const fetchFeed = useCallback(
-    (refresh: boolean) =>
+  const fetchFeed = useCallback((refresh: boolean, early = false) => {
+    const ask = (quick: boolean): Promise<boolean> =>
       ipc
-        .feedGet(refresh)
+        .feedGet(refresh, quick)
         .then((view) => {
           setResult({ view, problem: null });
-          return true;
+          // The copy on disk came first, to show at once: the fresh feed follows.
+          return view.early ? ask(false) : true;
         })
         .catch((error: unknown) => {
           setResult((previous) => ({
@@ -233,9 +234,9 @@ export function FeedView({ snapshot, onOpenInstallations, onInstallVersion }: Fe
             problem: feedProblem(error),
           }));
           return false;
-        }),
-    [],
-  );
+        });
+    return ask(early);
+  }, []);
 
   // Kept for the rest of the run when the player goes to another screen, and
   // scrolled back to where they were when they return.
@@ -262,8 +263,11 @@ export function FeedView({ snapshot, onOpenInstallations, onInstallVersion }: Fe
   // Asked again when its languages change or the connection returns.
   const languages = `${snapshot.settings.language} ${String(settings.machineTranslation)} ${settings.videoLanguage}`;
   const online = snapshot.network !== 'offline';
+  // The first time in a run the copy on disk comes first, so the feed shows at once.
+  const asked = useRef(place !== null);
   useEffect(() => {
-    void fetchFeed(false);
+    void fetchFeed(false, !asked.current);
+    asked.current = true;
   }, [fetchFeed, languages, online]);
   useEffect(() => {
     ipc

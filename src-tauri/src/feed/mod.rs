@@ -103,6 +103,9 @@ pub struct FeedView {
     pub stale: bool,
     /// Why it is stale.
     pub problem: Option<FeedProblem>,
+    /// The copy on disk, given before the service was asked (see
+    /// `FeedService::view`): the interface asks again for the fresh one.
+    pub early: bool,
 }
 
 /// A note as the interface shows it.
@@ -301,6 +304,23 @@ fn own_videos_file(root: &DataRoot) -> PathBuf {
 /// The feed kept on disk for `lang`.
 pub fn cached_feed(root: &DataRoot, lang: Lang) -> Option<Feed> {
     model::feed(read_json(&feed_file(root, lang))?.get("feed")?, lang)
+}
+
+/// The feed in `languages` from the copies on disk, marked `early`; none when
+/// the interface language's copy is missing.
+fn early_view(root: &DataRoot, languages: Languages) -> Option<FeedView> {
+    let base = cached_feed(root, languages.interface)?;
+    let other = |lang: Lang| {
+        (lang != languages.interface)
+            .then(|| cached_feed(root, lang))
+            .flatten()
+    };
+    Some(FeedView {
+        feed: compose(base, other(languages.notes), other(languages.videos)),
+        stale: false,
+        problem: None,
+        early: true,
+    })
 }
 
 /// The note kept on disk.
@@ -702,13 +722,23 @@ impl FeedService {
     }
 
     /// The feed the interface shows, in the languages the settings ask for.
+    /// With `early` (and no `refresh`) the copy on disk comes at once when
+    /// nothing fresher is in memory, marked `early`; the languages are asked
+    /// for together, not one after another.
     pub async fn view(
         &self,
         root: Option<&DataRoot>,
         languages: Languages,
         refresh: bool,
+        early: bool,
     ) -> FeedResult<FeedView> {
-        let (base, mut problem) = self.feed(root, languages.interface, refresh).await?;
+        if early
+            && !refresh
+            && !self.fresh_in_memory(languages)
+            && let Some(view) = root.and_then(|root| early_view(root, languages))
+        {
+            return Ok(view);
+        }
         let other = |lang: Lang| async move {
             if lang == languages.interface {
                 return (None, None);
@@ -718,14 +748,43 @@ impl FeedService {
                 Err(problem) => (None, Some(problem)),
             }
         };
-        let (notes, notes_problem) = other(languages.notes).await;
-        let (videos, videos_problem) = other(languages.videos).await;
-        problem = problem.or(notes_problem).or(videos_problem);
+        // Videos in the notes' language come with the notes' feed.
+        let videos_lang = (languages.videos != languages.notes).then_some(languages.videos);
+        let (base, (notes, notes_problem), (videos, videos_problem)) = tokio::join!(
+            self.feed(root, languages.interface, refresh),
+            other(languages.notes),
+            async {
+                match videos_lang {
+                    Some(lang) => other(lang).await,
+                    None => (None, None),
+                }
+            },
+        );
+        let (base, problem) = base?;
+        let videos = if videos_lang.is_some() {
+            videos
+        } else {
+            notes.clone()
+        };
+        let problem = problem.or(notes_problem).or(videos_problem);
         Ok(FeedView {
             feed: compose(base, notes, videos),
             stale: problem.is_some(),
             problem,
+            early: false,
         })
+    }
+
+    /// Whether every feed `languages` needs was fetched within `FEED_FRESH`.
+    fn fresh_in_memory(&self, languages: Languages) -> bool {
+        let fresh = lock(&self.fresh);
+        [languages.interface, languages.notes, languages.videos]
+            .iter()
+            .all(|lang| {
+                fresh
+                    .get(lang)
+                    .is_some_and(|(at, _)| at.elapsed() < FEED_FRESH)
+            })
     }
 
     /// A page of the endless list: `filter` one part or all, as the settings
