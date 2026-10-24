@@ -2546,7 +2546,9 @@
         "done": "The world has set {generation} of its mods. Friends get them the next time they join.",
         "trialFailed": "The new mods did not start on a copy of the world, so the world has not changed.",
         "rolledBack": "The world did not start with its new mods, so its earlier mods and the backup made before the update are back.",
-        "open": "Update the mods"
+        "open": "Update the mods",
+        "fewer": "Show fewer",
+        "more": "and {count} more"
       },
       "devices": {
         "open": "Computers",
@@ -2571,14 +2573,20 @@
         "hint": "They can be moved into worlds with friends: the original stays in its installation.",
         "meta": "{installation}, {game}",
         "none": "There are no single-player worlds in your installations yet.",
-        "importNamed": "Import {name}"
+        "importNamed": "Import {name}",
+        "metaSize": "{installation}, {game}, {size}"
       },
       "roomActions": "Room actions",
       "you": "This is you",
       "inWorld": "In the world",
       "memberGone": "Not in the room",
       "memberBanned": "Banned",
-      "modsFrom": "Taken from the installation “{name}”."
+      "modsFrom": "Taken from the installation “{name}”.",
+      "memberPath": {
+        "direct": "Connected directly",
+        "relay": "Connected through relay.lapi.sh"
+      },
+      "modsGuests": "Friends get the ones their game needs when they join, and see which are new before anything installs."
     },
     "metered": {
       "toggle": "Metered connection",

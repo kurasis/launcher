@@ -786,18 +786,31 @@ describe('WorldsView', () => {
   });
 
   it('puts Play and Close the world in the head of the room this computer hosts', async () => {
+    const hosting = {
+      room: ROOM,
+      world: WORLD,
+      phase: 'ready',
+      players: ['Host_Player', 'Guest_One'],
+      paths: { Guest_One: 'relay' },
+      ended: null,
+      reopening: false,
+      clean: null,
+    };
     setup({
-      worlds_state: () => ({
-        ...idle,
-        hosting: {
-          room: ROOM,
-          world: WORLD,
-          phase: 'ready',
-          players: ['Host_Player', 'Guest_One'],
-          ended: null,
-          reopening: false,
-          clean: null,
-        },
+      worlds_state: () => ({ ...idle, hosting }),
+      worlds_room: () => ({
+        room: mine,
+        members: [
+          { account: ME, nick: 'Host_Player', role: 'owner', state: 'active', joined: 1 },
+          {
+            account: FRIEND,
+            nick: 'Guest_One',
+            role: 'member',
+            state: 'active',
+            joined: 2,
+            playing: true,
+          },
+        ],
       }),
     });
     const card = within((await screen.findByText('Our base')).closest('li') as HTMLElement);
@@ -812,6 +825,51 @@ describe('WorldsView', () => {
     const members = within(await screen.findByRole('region', { name: 'Members 2' }));
     const guest = within(members.getByText('Guest_One').closest('li') as HTMLElement);
     expect(guest.getByText('In the world')).toBeInTheDocument();
+    // How the guest reaches this computer; the host plays here and has no path.
+    expect(guest.getByText('Connected through relay.lapi.sh')).toBeInTheDocument();
+    const host = within(members.getByText('Host_Player').closest('li') as HTMLElement);
+    expect(host.getByText('In the world')).toBeInTheDocument();
+    expect(host.queryByText(/^Connected/)).toBeNull();
+    // Closed here: nobody is in the world, whatever the service said a moment ago.
+    await act(async () => {
+      await emit('worlds://state', { ...idle, hosting: { ...hosting, ended: 'stopped' } });
+    });
+    expect(guest.queryByText('In the world')).toBeNull();
+    expect(host.queryByText('In the world')).toBeNull();
+  });
+
+  it("marks who is in a friend's world by what worlds.lapi.sh says", async () => {
+    setup({
+      worlds_room: () => ({
+        room: theirs,
+        members: [
+          {
+            account: FRIEND,
+            nick: 'Guest_One',
+            role: 'owner',
+            state: 'active',
+            joined: 1,
+            playing: false,
+          },
+          {
+            account: ME,
+            nick: 'Host_Player',
+            role: 'member',
+            state: 'active',
+            joined: 2,
+            playing: true,
+          },
+        ],
+      }),
+    });
+    const card = within((await screen.findByText('Friend world')).closest('li') as HTMLElement);
+    fireEvent.click(card.getByRole('button', { name: 'Open' }));
+    const members = within(await screen.findByRole('region', { name: 'Members 2' }));
+    const self = within(members.getByText('Host_Player').closest('li') as HTMLElement);
+    expect(self.getByText('In the world')).toBeInTheDocument();
+    expect(self.getByText('This is you')).toBeInTheDocument();
+    const owner = within(members.getByText('Guest_One').closest('li') as HTMLElement);
+    expect(owner.queryByText('In the world')).toBeNull();
   });
 
   it('sends a fresh invite code to a friend in a direct chat', async () => {
@@ -937,6 +995,18 @@ describe('WorldsView', () => {
     expect(friend.queryByText(/mods$/)).toBeNull();
   });
 
+  it('says how many mods a closed room played the last time', async () => {
+    setup({
+      worlds_rooms: () => [mine, { ...theirs, hosting: false, online: 0, mods: 7 }],
+    });
+    const friend = within((await screen.findByText('Friend world')).closest('li') as HTMLElement);
+    expect(friend.getByText('Closed')).toBeInTheDocument();
+    expect(friend.getByText('7 mods')).toBeInTheDocument();
+    // A vanilla room says nothing of mods.
+    const base = within(screen.getByText('Our base').closest('li') as HTMLElement);
+    expect(base.queryByText(/mods$/)).toBeNull();
+  });
+
   it('lists the single-player worlds and imports one from its row without reading them again', async () => {
     const INSTANCE = '33333333-3333-4333-8333-333333333333';
     const { calls } = setup({
@@ -947,13 +1017,17 @@ describe('WorldsView', () => {
           minecraft: '1.21.1',
           loader: null,
           saves: ['Home', 'Far'],
+          // Far could not be counted.
+          sizes: [312 * 1024 * 1024, null],
         },
       ],
       worlds_import: () => mine,
       worlds_accept_eula: () => local,
     });
     const panel = within(await screen.findByRole('region', { name: 'Your single-player worlds' }));
-    const far = within((await panel.findByText('Far')).closest('li') as HTMLElement);
+    const home = within((await panel.findByText('Home')).closest('li') as HTMLElement);
+    expect(home.getByText('\u2068Vanilla\u2069, Minecraft 1.21.1, 312.0 MiB')).toBeInTheDocument();
+    const far = within(panel.getByText('Far').closest('li') as HTMLElement);
     expect(far.getByText('\u2068Vanilla\u2069, Minecraft 1.21.1')).toBeInTheDocument();
     fireEvent.click(far.getByRole('button', { name: 'Import \u2068Far\u2069' }));
     const dialog = within(await screen.findByRole('dialog'));
@@ -1168,6 +1242,16 @@ describe('WorldsView', () => {
         { ...local, played: true, loader: fabric, mods: 2, generation: 1, source },
       ],
       worlds_backups: () => [],
+      worlds_world_mods: () => [
+        { name: 'Create', version: '6.0', projectId: null, side: 'both' },
+        { name: 'Fabric API', version: '0.110.5', projectId: 'P7dR8mSH', side: 'both' },
+        { name: 'ledger', version: null, projectId: null, side: 'server' },
+        { name: 'Lithium', version: '0.14.3', projectId: null, side: 'both' },
+        { name: 'Sodium', version: '0.6.6', projectId: 'AANobbMI', side: 'client' },
+        { name: '', version: '1', projectId: null, side: 'both' },
+        { name: 'sodium-fabric-0.6.6', version: '0.6.6', projectId: null, side: 'client' },
+        { name: 'Zoomify', version: '2.14', projectId: null, side: 'client' },
+      ],
       worlds_mod_sources: () => [
         { instanceId: source, name: 'Fabric pack', minecraft: '1.21.1', loader: fabric },
         {
@@ -1202,8 +1286,28 @@ describe('WorldsView', () => {
     fireEvent.click(card.getByRole('button', { name: 'Open' }));
     expect(await screen.findByText("Set 1 of the world's mods, 2 mods.")).toBeInTheDocument();
     expect(
-      screen.getByText('Taken from the installation “\u2068Fabric pack\u2069”.'),
+      await screen.findByText(
+        'Taken from the installation “\u2068Fabric pack\u2069”. Friends get the ones their game needs when they join, and see which are new before anything installs.',
+      ),
     ).toBeInTheDocument();
+    // The first mods by name and version, the rest on request; one without a name is left
+    // out, a version already in the name is not said twice, a server's own mod says so.
+    const named = await screen.findByText('Create');
+    const tags = within(named.closest('ul') as HTMLElement);
+    expect(tags.getAllByRole('listitem').map((item) => item.textContent)).toEqual([
+      'Create 6.0',
+      'Fabric API 0.110.5',
+      'ledger · server only',
+      'Lithium 0.14.3',
+    ]);
+    const more = screen.getByRole('button', { name: 'and 3 more' });
+    expect(more).toHaveAttribute('aria-expanded', 'false');
+    fireEvent.click(more);
+    expect(tags.getAllByRole('listitem')).toHaveLength(7);
+    expect(tags.getAllByRole('listitem')[5]).toHaveTextContent(/^sodium-fabric-0\.6\.6$/);
+    expect(more).toHaveTextContent('Show fewer');
+    expect(more).toHaveAttribute('aria-expanded', 'true');
+    expect(called(calls, 'worlds_world_mods')[0]?.args).toEqual({ world: WORLD });
     // The update tools are folded until asked for.
     expect(screen.queryByLabelText('From the installation')).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Update the mods' }));
@@ -1232,6 +1336,21 @@ describe('WorldsView', () => {
       choices: { 'config/spawn.json': 'theirs' },
     });
     expect(called(calls, 'worlds_stop_hosting')).toHaveLength(0);
+    // The update gets the room ready: once it is done, the world and its mods are read again.
+    const reads = called(calls, 'worlds_local').length;
+    await act(async () => {
+      await emit('worlds://state', {
+        ...idle,
+        preparing: { room: ROOM, stage: 'server', downloadedBytes: 0, totalBytes: 0 },
+      });
+    });
+    await act(async () => {
+      await emit('worlds://state', idle);
+    });
+    await waitFor(() => {
+      expect(called(calls, 'worlds_world_mods')).toHaveLength(2);
+    });
+    expect(called(calls, 'worlds_local').length).toBeGreaterThan(reads);
   });
 
   it('says the new mods did not start on the copy and the world stayed as it was', async () => {

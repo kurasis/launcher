@@ -63,11 +63,28 @@ export function roomOpen(room: WorldsRoom, state: WorldsState): { open: boolean;
 
 /**
  * How many mods a room plays, when it is known: the owner's own world counts them all;
- * a room open with mods says how many a guest installs (older launchers do not say).
+ * a room open with mods says how many a guest installs (older launchers do not say),
+ * and a closed one how many its last session played.
  */
 export function roomMods(room: WorldsRoom, world: LocalWorld | null): number | null {
-  const count = world !== null && world.loader !== null ? world.mods : room.pack?.mods;
-  return count === undefined || count === 0 ? null : count;
+  const count =
+    world !== null && world.loader !== null ? world.mods : (room.pack?.mods ?? room.mods);
+  return typeof count !== 'number' || !Number.isInteger(count) || count <= 0 ? null : count;
+}
+
+/** How a guest reaches the world this computer hosts for `room`, once a path is chosen. */
+export function guestPath(
+  state: WorldsState,
+  room: string,
+  nick: string,
+): 'direct' | 'relay' | null {
+  const hosting = state.hosting;
+  if (hosting?.room !== room || hosting.ended !== null) return null;
+  // By nick: only the map's own entries, never what an object inherits.
+  const paths: unknown = hosting.paths;
+  if (typeof paths !== 'object' || paths === null || !Object.hasOwn(paths, nick)) return null;
+  const path: unknown = (paths as Record<string, unknown>)[nick];
+  return path === 'direct' || path === 'relay' ? path : null;
 }
 
 /**
